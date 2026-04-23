@@ -212,6 +212,9 @@ model VendorProfile {
   quotes            Quote[]
   shortlistEntries  VendorShortlistSnapshot[]
   claims            VendorClaim[]
+  evidenceItems     EvidenceItem[]
+  publicSnapshots   VendorPublicSnapshot[]
+  pageMetrics       VendorPageMetric[]
 
   @@index([profileStatus])
   @@index([verificationStatus])
@@ -835,4 +838,198 @@ model AiEvaluation {
 
   @@index([taskType, datasetName])
   @@map("ai_evaluations")
+}
+
+// -------------------------------------------------------------------------
+// Phase 5 — Scraped ingestion & public vendor pages
+// -------------------------------------------------------------------------
+
+enum SourceUrlType {
+  vendor_site
+  directory
+  listing
+  social_profile
+  government_record
+  other
+}
+
+enum DiscoveryMethod {
+  manual
+  search
+  import
+}
+
+enum SourceUrlStatus {
+  queued
+  active
+  blocked
+  failed
+  archived
+}
+
+model SourceUrl {
+  id              String          @id
+  url             String          @unique
+  domain          String
+  sourceType      SourceUrlType   @map("source_type")
+  discoveryMethod DiscoveryMethod @map("discovery_method")
+  status          SourceUrlStatus @default(queued)
+  lastCrawledAt   DateTime?       @map("last_crawled_at")
+  nextCrawlAt     DateTime?       @map("next_crawl_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  crawls CrawlRun[]
+
+  @@index([domain])
+  @@index([status, nextCrawlAt])
+  @@map("source_urls")
+}
+
+enum CrawlStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+model CrawlRun {
+  id                String      @id
+  sourceUrlId       String      @map("source_url_id")
+  status            CrawlStatus @default(queued)
+  httpStatus        Int?        @map("http_status")
+  contentHash       String?     @map("content_hash")
+  fetchedAt         DateTime?   @map("fetched_at")
+  errorMessage      String?     @map("error_message")
+  rawTextStorageKey String?     @map("raw_text_storage_key")
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  sourceUrl     SourceUrl                  @relation(fields: [sourceUrlId], references: [id], onDelete: Cascade)
+  candidates    ExtractedVendorCandidate[]
+  evidenceItems EvidenceItem[]
+
+  @@index([sourceUrlId, status])
+  @@map("crawl_runs")
+}
+
+enum CandidateStatus {
+  pending_match
+  matched
+  created_stub
+  rejected
+}
+
+model ExtractedVendorCandidate {
+  id                      String          @id
+  crawlRunId              String          @map("crawl_run_id")
+  legalName               String?         @map("legal_name")
+  displayName             String?         @map("display_name")
+  website                 String?
+  phone                   String?
+  email                   String?
+  cityText                String?         @map("city_text")
+  categoryText            String?         @map("category_text")
+  serviceSummary          String?         @map("service_summary")
+  extractionConfidence    Decimal?        @map("extraction_confidence") @db.Decimal(4, 3)
+  status                  CandidateStatus @default(pending_match)
+  resolvedVendorProfileId String?         @map("resolved_vendor_profile_id")
+  createdAt               DateTime        @default(now()) @map("created_at")
+
+  crawlRun      CrawlRun       @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  dedupeReviews DedupeReview[]
+
+  @@index([status])
+  @@map("extracted_vendor_candidates")
+}
+
+enum EvidenceType {
+  explicit
+  inferred
+}
+
+model EvidenceItem {
+  id              String       @id
+  vendorProfileId String       @map("vendor_profile_id")
+  sourceUrlId     String?      @map("source_url_id")
+  crawlRunId      String?      @map("crawl_run_id")
+  fieldName       String       @map("field_name")
+  rawValue        String?      @map("raw_value")
+  normalizedValue String?      @map("normalized_value")
+  sourceExcerpt   String?      @map("source_excerpt")
+  evidenceType    EvidenceType @default(explicit) @map("evidence_type")
+  confidenceScore Decimal?     @map("confidence_score") @db.Decimal(4, 3)
+  freshnessScore  Decimal?     @map("freshness_score") @db.Decimal(4, 3)
+  observedAt      DateTime     @map("observed_at")
+  expiresAt       DateTime?    @map("expires_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  crawlRun      CrawlRun?     @relation(fields: [crawlRunId], references: [id], onDelete: SetNull)
+
+  @@index([vendorProfileId, fieldName])
+  @@map("evidence_items")
+}
+
+enum PublicStatus {
+  draft
+  published
+  suppressed
+}
+
+model VendorPublicSnapshot {
+  id              String       @id
+  vendorProfileId String       @map("vendor_profile_id")
+  slug            String       @unique
+  pageTitle       String       @map("page_title")
+  metaDescription String?      @map("meta_description")
+  summaryJson     Json         @map("summary_json")
+  publicStatus    PublicStatus @default(draft) @map("public_status")
+  claimCtaVariant String?      @map("claim_cta_variant")
+  lastPublishedAt DateTime?    @map("last_published_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  vendorProfile VendorProfile      @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  pageMetrics   VendorPageMetric[]
+
+  @@index([publicStatus, lastPublishedAt])
+  @@map("vendor_public_snapshots")
+}
+
+model VendorPageMetric {
+  id              String   @id
+  vendorProfileId String   @map("vendor_profile_id")
+  snapshotId      String   @map("snapshot_id")
+  metricDate      DateTime @map("metric_date") @db.Date
+  pageViews       Int      @default(0) @map("page_views")
+  claimClicks     Int      @default(0) @map("claim_clicks")
+  claimStarts     Int      @default(0) @map("claim_starts")
+  claimsCompleted Int      @default(0) @map("claims_completed")
+
+  vendorProfile VendorProfile        @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  snapshot      VendorPublicSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, metricDate])
+  @@map("vendor_page_metrics")
+}
+
+enum DedupeReviewStatus {
+  pending
+  merged
+  separate
+  rejected
+}
+
+model DedupeReview {
+  id                      String             @id
+  candidateId             String             @map("candidate_id")
+  existingVendorProfileId String?            @map("existing_vendor_profile_id")
+  reviewStatus            DedupeReviewStatus @default(pending) @map("review_status")
+  reviewNotes             String?            @map("review_notes")
+  reviewedByUserId        String?            @map("reviewed_by_user_id")
+  reviewedAt              DateTime?          @map("reviewed_at")
+  createdAt               DateTime           @default(now()) @map("created_at")
+
+  candidate ExtractedVendorCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([reviewStatus])
+  @@map("dedupe_reviews")
 }

@@ -26,6 +26,10 @@ export default function Home() {
           </Link>{" "}
           — vendor claim acceptance (Phase 2)
         </li>
+        <li>
+          <span className="text-gray-500">/vendors/:slug</span> — public vendor
+          pages (Phase 5, once a snapshot is published)
+        </li>
       </ul>
     </main>
   );

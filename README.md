@@ -4,10 +4,12 @@ B2B procurement platform for fragmented service categories. V1 wedge: security
 staffing in Bengaluru. See `docs/superpowers/plans/` for the full multi-phase
 plan.
 
-This repo currently implements **Phase 1 — Foundation & Data Layer**,
+This repo currently implements all five roadmap phases:
+**Phase 1 — Foundation & Data Layer**,
 **Phase 2 — Vendor Onboarding & Ops Verification**,
-**Phase 3 — Buyer Sourcing Flow**, and
-**Phase 4 — AI Layer** (assistive, grounded, feature-flagged).
+**Phase 3 — Buyer Sourcing Flow**,
+**Phase 4 — AI Layer**, and
+**Phase 5 — Scraped Ingestion & Public Vendor Pages**.
 
 Phase 1 (foundation):
 
@@ -102,6 +104,38 @@ Phase 4 (AI layer):
 - Buyer UI: AI rationale panels on requirement detail (shortlist
   explanation) and RFQ detail (compare explanation), both lazy
   (explicit Explain click)
+
+Phase 5 (scraped ingestion + public pages):
+
+- Schema additions: `source_urls`, `crawl_runs`,
+  `extracted_vendor_candidates`, `evidence_items`,
+  `vendor_public_snapshots`, `vendor_page_metrics`,
+  `dedupe_reviews`
+- Fetcher + Extractor interfaces so tests exercise the pipeline
+  without network flakiness. Production plugs in a real provider
+  (e.g. Exa, ScrapingBee, headless Chromium) at the same seam
+- Candidate matching: auto-merge on exact domain or phone; fuzzy
+  name matches route to a dedupe review queue
+- Stub creation: candidates promote to a `createdBySource=scrape`
+  vendor profile with per-field `evidence_items` (confidence,
+  freshness, source URL, observed-at)
+- Publishing: `publishSnapshot` suppresses weak records (< 2 evidence
+  items), generates a canonical slug, and stores the public summary
+  JSON. Trust band derives from `(createdBySource, claimedAt,
+  verificationStatus)` — one of `unclaimed_public_record`,
+  `claimed_not_verified`, `verified_vendor`
+- Public page at `/vendors/:slug` with trust-band chip, public
+  evidence table (field + value + type + observed date), and a
+  claim form that funnels into the Phase 2 claim flow
+- Page metrics: `vendor_page_metrics` tracks daily page views,
+  claim clicks, claim starts, claims completed
+- New API routes:
+  - `GET/POST /api/internal/sources`
+  - `POST /api/internal/candidates/:id/match`
+  - `POST /api/internal/candidates/:id/create-stub`
+  - `POST /api/internal/public-pages/:vendorId/publish`
+  - `GET /api/public/vendors/:slug`
+  - `POST /api/public/vendors/:slug/claim`
 
 ## Local setup
 
