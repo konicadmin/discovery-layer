@@ -1,5 +1,6 @@
-import { type Prisma, type PrismaClient, RequirementStatus } from "@prisma/client";
+import { type Prisma, RequirementStatus } from "@prisma/client";
 import { newId } from "@/lib/id";
+import { type Db, withTx } from "@/server/db/with-tx";
 import { logEvent } from "@/server/services/audit/log-event";
 
 export type CreateRequirementInput = {
@@ -15,11 +16,12 @@ export type CreateRequirementInput = {
   startDate?: Date;
   complianceRequirements?: Prisma.InputJsonValue;
   specialRequirements?: Prisma.InputJsonValue;
+  status?: RequirementStatus;
   createdByUserId: string;
 };
 
-export async function createRequirement(db: PrismaClient, input: CreateRequirementInput) {
-  return db.$transaction(async (tx) => {
+export async function createRequirement(db: Db, input: CreateRequirementInput) {
+  return withTx(db, async (tx) => {
     const requirement = await tx.buyerRequirement.create({
       data: {
         id: newId(),
@@ -35,7 +37,7 @@ export async function createRequirement(db: PrismaClient, input: CreateRequireme
         startDate: input.startDate,
         complianceRequirementsJson: input.complianceRequirements,
         specialRequirementsJson: input.specialRequirements,
-        status: RequirementStatus.draft,
+        status: input.status ?? RequirementStatus.draft,
         createdByUserId: input.createdByUserId,
       },
     });
@@ -54,5 +56,25 @@ export async function createRequirement(db: PrismaClient, input: CreateRequireme
     });
 
     return requirement;
+  });
+}
+
+export async function activateRequirement(
+  db: Db,
+  args: { requirementId: string; actorUserId: string },
+) {
+  return withTx(db, async (tx) => {
+    const req = await tx.buyerRequirement.update({
+      where: { id: args.requirementId },
+      data: { status: RequirementStatus.active },
+    });
+    await logEvent(tx, {
+      actorUserId: args.actorUserId,
+      entityType: "buyer_requirement",
+      entityId: req.id,
+      action: "requirement.activated",
+      after: { status: req.status },
+    });
+    return req;
   });
 }

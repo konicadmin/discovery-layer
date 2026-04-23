@@ -1,6 +1,7 @@
-import { type PrismaClient, RfqStatus, type RecipientStatus } from "@prisma/client";
+import { RfqStatus, type RecipientStatus } from "@prisma/client";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { newId } from "@/lib/id";
+import { type Db, withTx } from "@/server/db/with-tx";
 import { logEvent } from "@/server/services/audit/log-event";
 
 function rfqCode(): string {
@@ -16,8 +17,8 @@ export type CreateRfqInput = {
   createdByUserId: string;
 };
 
-export async function createRfq(db: PrismaClient, input: CreateRfqInput) {
-  return db.$transaction(async (tx) => {
+export async function createRfq(db: Db, input: CreateRfqInput) {
+  return withTx(db, async (tx) => {
     const requirement = await tx.buyerRequirement.findUnique({
       where: { id: input.buyerRequirementId },
     });
@@ -52,10 +53,10 @@ export async function createRfq(db: PrismaClient, input: CreateRfqInput) {
 }
 
 export async function addRfqRecipient(
-  db: PrismaClient,
+  db: Db,
   args: { rfqId: string; vendorProfileId: string; actorUserId: string },
 ) {
-  return db.$transaction(async (tx) => {
+  return withTx(db, async (tx) => {
     const rfq = await tx.rfq.findUnique({ where: { id: args.rfqId } });
     if (!rfq) throw new NotFoundError("rfq", args.rfqId);
     if (rfq.status !== RfqStatus.draft && rfq.status !== RfqStatus.ready_to_issue) {
@@ -84,10 +85,10 @@ export async function addRfqRecipient(
 }
 
 export async function issueRfq(
-  db: PrismaClient,
+  db: Db,
   args: { rfqId: string; actorUserId: string },
 ) {
-  return db.$transaction(async (tx) => {
+  return withTx(db, async (tx) => {
     const rfq = await tx.rfq.findUnique({
       where: { id: args.rfqId },
       include: { recipients: true },

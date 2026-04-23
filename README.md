@@ -4,8 +4,9 @@ B2B procurement platform for fragmented service categories. V1 wedge: security
 staffing in Bengaluru. See `docs/superpowers/plans/` for the full multi-phase
 plan.
 
-This repo currently implements **Phase 1 — Foundation & Data Layer** and
-**Phase 2 — Vendor Onboarding & Ops Verification**.
+This repo currently implements **Phase 1 — Foundation & Data Layer**,
+**Phase 2 — Vendor Onboarding & Ops Verification**, and
+**Phase 3 — Buyer Sourcing Flow**.
 
 Phase 1 (foundation):
 
@@ -49,6 +50,33 @@ Phase 2 (onboarding + verification):
 - New vendor portal: `/vendor/claim` for claim acceptance,
   `/vendor/:id` onboarding dashboard with completion checklist and
   Submit-for-review button
+
+Phase 3 (buyer sourcing):
+
+- Schema additions: `rfq_decisions`, `rfq_messages`
+- Shortlist engine (deterministic, rules-based): hard filters on
+  verified + active + category + city, weighted score across
+  category/city/compliance/completeness/response-behavior/recency,
+  persists `vendor_shortlist_snapshots`, exposes per-reason detail
+- RFQ decision capture (`awarded` / `closed_no_award` / `cancelled`)
+  with audit and RFQ status transition; `awarded` enforces invited
+  vendor
+- Normalized compare builder: latest submitted quote per vendor,
+  sorted by grand total, with anomaly flags
+  (quote_expired, assumptions_missing, grand_total_missing,
+  line_items_missing)
+- Inline RFQ messages (`rfq_messages` with visibility + message type)
+- Buyer portal at `/buyer`: dashboard, new-requirement form,
+  requirement detail with live shortlist panel, RFQ compare page
+  with decision panel
+- New API routes:
+  - `GET/POST /api/buyer/requirements`
+  - `POST /api/buyer/requirements/:id/shortlist`
+  - `GET /api/buyer/requirements/:id/shortlist`
+  - `POST /api/buyer/requirements/:id/rfqs` (create + add recipients +
+    optional issue)
+  - `GET /api/buyer/rfqs/:id/compare`
+  - `POST /api/buyer/rfqs/:id/decision`
 
 ## Local setup
 

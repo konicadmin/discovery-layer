@@ -500,6 +500,8 @@ model Rfq {
   createdBy         User             @relation("RfqCreator", fields: [createdByUserId], references: [id])
   recipients        RfqRecipient[]
   quotes            Quote[]
+  decisions         RfqDecision[]
+  messages          RfqMessage[]
 
   @@index([status])
   @@map("rfqs")
@@ -697,4 +699,60 @@ model Notification {
 
   @@index([status, createdAt])
   @@map("notifications")
+}
+
+// -------------------------------------------------------------------------
+// Phase 3 — Buyer sourcing extensions
+// -------------------------------------------------------------------------
+
+enum DecisionStatus {
+  awarded
+  closed_no_award
+  cancelled
+  reopened
+}
+
+model RfqDecision {
+  id                      String         @id
+  rfqId                   String         @map("rfq_id")
+  selectedVendorProfileId String?        @map("selected_vendor_profile_id")
+  decisionStatus          DecisionStatus @map("decision_status")
+  reasonCode              String?        @map("reason_code")
+  decisionNotes           String?        @map("decision_notes")
+  decidedByUserId         String         @map("decided_by_user_id")
+  decidedAt               DateTime       @default(now()) @map("decided_at")
+
+  rfq Rfq @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+
+  @@index([rfqId])
+  @@map("rfq_decisions")
+}
+
+enum MessageType {
+  comment
+  clarification
+  system_update
+  deadline_reminder
+}
+
+enum MessageVisibility {
+  internal
+  buyer_vendor
+  system
+}
+
+model RfqMessage {
+  id           String            @id
+  rfqId        String            @map("rfq_id")
+  senderUserId String?           @map("sender_user_id")
+  senderOrgId  String?           @map("sender_org_id")
+  messageType  MessageType       @default(comment) @map("message_type")
+  body         String
+  visibility   MessageVisibility @default(internal)
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  rfq Rfq @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+
+  @@index([rfqId, createdAt])
+  @@map("rfq_messages")
 }
