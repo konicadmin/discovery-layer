@@ -30,6 +30,7 @@ export default async function BuyerDashboard() {
         <thead className="bg-gray-100 text-left">
           <tr>
             <th className="px-3 py-2">Title</th>
+            <th className="px-3 py-2">Region</th>
             <th className="px-3 py-2">Buyer</th>
             <th className="px-3 py-2">Category</th>
             <th className="px-3 py-2">City</th>
@@ -50,6 +51,7 @@ export default async function BuyerDashboard() {
                   {r.title}
                 </Link>
               </td>
+              <td className="px-3 py-2 text-xs font-mono">{r.region}</td>
               <td className="px-3 py-2">{r.buyerOrganization.displayName}</td>
               <td className="px-3 py-2">{r.serviceCategory.label}</td>
               <td className="px-3 py-2">{r.city.name}</td>
@@ -61,7 +63,7 @@ export default async function BuyerDashboard() {
           ))}
           {requirements.length === 0 && (
             <tr>
-              <td colSpan={8} className="px-3 py-6 text-center text-gray-500 text-sm">
+              <td colSpan={9} className="px-3 py-6 text-center text-gray-500 text-sm">
                 No requirements yet.
               </td>
             </tr>

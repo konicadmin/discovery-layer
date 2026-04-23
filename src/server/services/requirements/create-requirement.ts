@@ -1,10 +1,12 @@
-import { type Prisma, RequirementStatus } from "@prisma/client";
+import { type Prisma, Region, RequirementStatus } from "@prisma/client";
+import { NotFoundError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";
 import { logEvent } from "@/server/services/audit/log-event";
 
 export type CreateRequirementInput = {
   buyerOrganizationId: string;
+  region?: Region;
   title: string;
   serviceCategoryId: string;
   cityId: string;
@@ -22,10 +24,21 @@ export type CreateRequirementInput = {
 
 export async function createRequirement(db: Db, input: CreateRequirementInput) {
   return withTx(db, async (tx) => {
+    // Default the region to the buyer organization's region unless overridden.
+    let region = input.region;
+    if (!region) {
+      const buyer = await tx.organization.findUnique({
+        where: { id: input.buyerOrganizationId },
+      });
+      if (!buyer) throw new NotFoundError("organization", input.buyerOrganizationId);
+      region = buyer.region;
+    }
+
     const requirement = await tx.buyerRequirement.create({
       data: {
         id: newId(),
         buyerOrganizationId: input.buyerOrganizationId,
+        region,
         title: input.title,
         serviceCategoryId: input.serviceCategoryId,
         cityId: input.cityId,

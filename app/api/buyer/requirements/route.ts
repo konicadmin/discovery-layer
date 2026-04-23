@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { Region } from "@prisma/client";
 import { prisma } from "@/server/db/client";
 import { createRequirement } from "@/server/services/requirements/create-requirement";
 import { errorResponse } from "@/lib/api/handle-error";
 
 const BodySchema = z.object({
   buyerOrganizationId: z.string(),
+  region: z.nativeEnum(Region).optional(),
   title: z.string().min(3),
   serviceCategoryId: z.string(),
   cityId: z.string(),

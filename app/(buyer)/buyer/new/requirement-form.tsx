@@ -1,19 +1,30 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 type Option = { id: string; label: string };
+type RegionCode = "IN" | "US" | "EU";
+type BuyerOption = Option & { region: RegionCode };
+type CityOption = Option & { region: RegionCode };
+
+const REGION_OPTIONS: Array<Option & { region: RegionCode }> = [
+  { id: "IN", label: "IN — India", region: "IN" },
+  { id: "US", label: "US — United States", region: "US" },
+  { id: "EU", label: "EU — Europe", region: "EU" },
+];
 
 export function RequirementForm(props: {
-  buyers: Option[];
-  cities: Option[];
+  buyers: BuyerOption[];
+  cities: CityOption[];
   categories: Option[];
   users: Option[];
 }) {
   const router = useRouter();
   const [buyerOrganizationId, setBuyer] = useState(props.buyers[0]?.id ?? "");
-  const [cityId, setCity] = useState(props.cities[0]?.id ?? "");
+  const [region, setRegion] = useState<RegionCode>(
+    props.buyers[0]?.region ?? "IN",
+  );
   const [serviceCategoryId, setCategory] = useState(props.categories[0]?.id ?? "");
   const [createdByUserId, setUser] = useState(props.users[0]?.id ?? "");
   const [title, setTitle] = useState("");
@@ -26,6 +37,28 @@ export function RequirementForm(props: {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const citiesForRegion = useMemo(
+    () => props.cities.filter((c) => c.region === region),
+    [props.cities, region],
+  );
+  const [cityId, setCity] = useState(citiesForRegion[0]?.id ?? "");
+
+  function changeBuyer(id: string) {
+    setBuyer(id);
+    const buyer = props.buyers.find((b) => b.id === id);
+    if (buyer) {
+      setRegion(buyer.region);
+      const firstCity = props.cities.find((c) => c.region === buyer.region);
+      if (firstCity) setCity(firstCity.id);
+    }
+  }
+
+  function changeRegion(r: RegionCode) {
+    setRegion(r);
+    const firstCity = props.cities.find((c) => c.region === r);
+    if (firstCity) setCity(firstCity.id);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -35,6 +68,7 @@ export function RequirementForm(props: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         buyerOrganizationId,
+        region,
         title,
         serviceCategoryId,
         cityId,
@@ -58,9 +92,18 @@ export function RequirementForm(props: {
 
   return (
     <form onSubmit={(e) => void submit(e)} className="bg-white border rounded p-4 space-y-3">
-      <Row label="Buyer organization">
-        <Select value={buyerOrganizationId} onChange={setBuyer} options={props.buyers} />
-      </Row>
+      <div className="grid grid-cols-2 gap-3">
+        <Row label="Buyer organization">
+          <Select value={buyerOrganizationId} onChange={changeBuyer} options={props.buyers} />
+        </Row>
+        <Row label="Region">
+          <Select
+            value={region}
+            onChange={(v) => changeRegion(v as RegionCode)}
+            options={REGION_OPTIONS}
+          />
+        </Row>
+      </div>
       <Row label="Title">
         <input
           className="w-full border rounded px-3 py-2 text-sm"
@@ -74,8 +117,8 @@ export function RequirementForm(props: {
         <Row label="Category">
           <Select value={serviceCategoryId} onChange={setCategory} options={props.categories} />
         </Row>
-        <Row label="City">
-          <Select value={cityId} onChange={setCity} options={props.cities} />
+        <Row label={`City (${region})`}>
+          <Select value={cityId} onChange={setCity} options={citiesForRegion} />
         </Row>
         <Row label="Site type">
           <Select

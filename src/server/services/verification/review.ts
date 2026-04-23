@@ -26,7 +26,7 @@ export async function openReview(
   return withTx(db, async (tx) => {
     const profile = await tx.vendorProfile.findUnique({
       where: { id: args.vendorProfileId },
-      include: { serviceCategories: true },
+      include: { serviceCategories: true, organization: true },
     });
     if (!profile) throw new NotFoundError("vendor_profile", args.vendorProfileId);
 
@@ -50,8 +50,14 @@ export async function openReview(
       profile.serviceCategories.find((c) => c.primaryCategory) ??
       profile.serviceCategories[0];
     if (primaryCategory) {
+      // Region-scoped: include items for the vendor's region + global items
+      // (region=null). Keeps PSARA off US vendors and EIN off Indian ones.
       const checklist = await tx.verificationChecklistItem.findMany({
-        where: { serviceCategoryId: primaryCategory.serviceCategoryId, active: true },
+        where: {
+          serviceCategoryId: primaryCategory.serviceCategoryId,
+          active: true,
+          OR: [{ region: profile.organization.region }, { region: null }],
+        },
       });
       if (checklist.length > 0) {
         await tx.verificationReviewItem.createMany({

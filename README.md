@@ -1,15 +1,43 @@
 # discovery-layer
 
-B2B procurement platform for fragmented service categories. V1 wedge: security
-staffing in Bengaluru. See `docs/superpowers/plans/` for the full multi-phase
-plan.
+B2B procurement platform for fragmented service categories, with
+**multi-region support** — India, United States, and Europe — for
+security staffing as the first beachhead. See `docs/superpowers/plans/`
+for the full multi-phase plan.
 
 This repo currently implements all five roadmap phases:
 **Phase 1 — Foundation & Data Layer**,
 **Phase 2 — Vendor Onboarding & Ops Verification**,
 **Phase 3 — Buyer Sourcing Flow**,
 **Phase 4 — AI Layer**, and
-**Phase 5 — Scraped Ingestion & Public Vendor Pages**.
+**Phase 5 — Scraped Ingestion & Public Vendor Pages**,
+plus a public **pricing signals** layer and **regionalization** for
+India / United States / Europe.
+
+## Regionalization
+
+A `Region` enum (`IN` | `US` | `EU`) flows through `Organization`,
+`BuyerRequirement`, and `VerificationChecklistItem`. It scopes:
+
+- **Shortlist** — hard-filters vendors to the requirement's region; the
+  compliance score is calibrated per-region (IN: GST + PSARA; US: EIN +
+  state security license + workers comp; EU: VAT + local security
+  license).
+- **Verification checklist** — items can be region-scoped (`region=US`)
+  or global (`region=NULL`). `openReview` seeds only the union of
+  global + vendor-region items.
+- **Pricing extraction** — detects `$`, `€`, `£`, `₹` / `Rs.` / `INR`,
+  respects decimal styles, and refuses to infer from "contact us"
+  pages. INR's `Rs` pattern uses word boundary + digit lookahead so it
+  doesn't fire on words like "officers" / "servers".
+- **Seed** — 13 cities (3 IN, 5 US, 5 EU), 11 sample vendors at
+  varying lifecycle stages (5 IN / 3 US / 3 EU), 13 verification
+  checklist items tagged by region, one sample buyer org per region.
+
+**Intentionally skipped for V1** (each is a proper project on its own):
+multilingual UI, per-US-state labor nuance, per-EU-country VAT/labor
+validation, timezone handling, tax calculation, German/French decimal-
+comma pricing extraction.
 
 Phase 1 (foundation):
 

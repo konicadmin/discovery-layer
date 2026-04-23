@@ -69,17 +69,30 @@ enum OrganizationStatus {
   archived
 }
 
+/// Regulatory region. Scopes trust model, compliance checklists,
+/// currency defaults, and shortlist filtering. A vendor operating in
+/// multiple regions is modeled as multiple vendor profiles today;
+/// a future multi-region table can be added without schema rewrite.
+enum Region {
+  IN
+  US
+  EU
+}
+
 model Organization {
-  id           String             @id
-  type         OrganizationType
-  legalName    String             @map("legal_name")
-  displayName  String             @map("display_name")
-  gstin        String?
-  website      String?
-  primaryPhone String?            @map("primary_phone")
-  status       OrganizationStatus @default(active)
-  createdAt    DateTime           @default(now()) @map("created_at")
-  updatedAt    DateTime           @updatedAt @map("updated_at")
+  id              String             @id
+  type            OrganizationType
+  legalName       String             @map("legal_name")
+  displayName     String             @map("display_name")
+  gstin           String?
+  taxId           String?            @map("tax_id")
+  website         String?
+  primaryPhone    String?            @map("primary_phone")
+  region          Region             @default(IN)
+  defaultCurrency String             @default("INR") @map("default_currency")
+  status          OrganizationStatus @default(active)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
 
   memberships       OrganizationMembership[]
   vendorProfile     VendorProfile?
@@ -87,6 +100,7 @@ model Organization {
   rfqs              Rfq[]
 
   @@index([type, status])
+  @@index([region])
   @@map("organizations")
 }
 
@@ -252,12 +266,23 @@ model VendorServiceArea {
 }
 
 enum ComplianceType {
+  // India
   gst
   psara
   epf
   esi
   labour_license
+  // Cross-region
   iso
+  // United States
+  ein
+  us_state_security_license
+  workers_comp
+  // Europe
+  vat
+  eu_security_license
+  gdpr_register
+  // Catch-all
   other
 }
 
@@ -396,6 +421,9 @@ model VerificationReview {
 model VerificationChecklistItem {
   id                String  @id
   serviceCategoryId String  @map("service_category_id")
+  /// Null = applies to all regions. Otherwise the item is only seeded
+  /// into a review when the vendor's region matches.
+  region            Region?
   code              String
   label             String
   description       String?
@@ -448,6 +476,7 @@ enum RequirementStatus {
 model BuyerRequirement {
   id                         String            @id
   buyerOrganizationId        String            @map("buyer_organization_id")
+  region                     Region            @default(IN)
   title                      String
   serviceCategoryId          String            @map("service_category_id")
   cityId                     String            @map("city_id")
@@ -472,6 +501,7 @@ model BuyerRequirement {
   shortlistEntries  VendorShortlistSnapshot[]
 
   @@index([buyerOrganizationId, status])
+  @@index([region, status])
   @@map("buyer_requirements")
 }
 

@@ -21,6 +21,7 @@ export default async function VendorsList() {
         <thead className="bg-gray-100 text-left">
           <tr>
             <th className="px-3 py-2">Name</th>
+            <th className="px-3 py-2">Region</th>
             <th className="px-3 py-2">City</th>
             <th className="px-3 py-2">Profile</th>
             <th className="px-3 py-2">Verification</th>
@@ -36,6 +37,7 @@ export default async function VendorsList() {
                   {v.organization.displayName}
                 </Link>
               </td>
+              <td className="px-3 py-2 text-xs font-mono">{v.organization.region}</td>
               <td className="px-3 py-2">{v.hqCity?.name ?? "—"}</td>
               <td className="px-3 py-2">
                 <span className="px-2 py-0.5 rounded bg-gray-100 text-xs">{v.profileStatus}</span>

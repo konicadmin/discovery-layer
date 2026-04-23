@@ -1,12 +1,34 @@
 import {
+  ComplianceType,
   type Prisma,
   ProfileStatus,
+  Region,
   VerificationStatus,
 } from "@prisma/client";
 import { NotFoundError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";
 import { logEvent } from "@/server/services/audit/log-event";
+
+/**
+ * Region-specific required compliance records for a security-staffing
+ * vendor. Used by the shortlist scorer to gauge "compliance completeness"
+ * without forcing India-only assumptions on US / EU vendors.
+ */
+function expectedComplianceFor(region: Region): ComplianceType[] {
+  switch (region) {
+    case Region.IN:
+      return [ComplianceType.gst, ComplianceType.psara];
+    case Region.US:
+      return [
+        ComplianceType.ein,
+        ComplianceType.us_state_security_license,
+        ComplianceType.workers_comp,
+      ];
+    case Region.EU:
+      return [ComplianceType.vat, ComplianceType.eu_security_license];
+  }
+}
 
 /**
  * Rules-based shortlist for Phase 3. Deterministic; AI rationale (Phase 4)
@@ -72,11 +94,12 @@ export async function generateShortlist(
     });
     if (!requirement) throw new NotFoundError("buyer_requirement", requirementId);
 
-    // Pool of candidates that pass hard filters.
+    // Hard filter: vendor must match the requirement's region (via org.region).
     const pool = await tx.vendorProfile.findMany({
       where: {
         verificationStatus: VerificationStatus.verified,
         profileStatus: ProfileStatus.active,
+        organization: { region: requirement.region },
         serviceCategories: {
           some: { serviceCategoryId: requirement.serviceCategoryId, active: true },
         },
@@ -93,10 +116,10 @@ export async function generateShortlist(
       },
     });
 
-    // Count exclusions for transparency (the admin UI shows these).
     const totalVerifiedInCategory = await tx.vendorProfile.count({
       where: {
         verificationStatus: VerificationStatus.verified,
+        organization: { region: requirement.region },
         serviceCategories: {
           some: { serviceCategoryId: requirement.serviceCategoryId, active: true },
         },
@@ -119,18 +142,23 @@ export async function generateShortlist(
           detail: `serves ${requirement.cityId}`,
         });
 
-        const hasGst = v.complianceRecords.some(
-          (c) => c.complianceType === "gst" && c.status === "active",
+        const complianceExpected = expectedComplianceFor(requirement.region);
+        const complianceActive = complianceExpected.filter((ct) =>
+          v.complianceRecords.some(
+            (c) => c.complianceType === ct && c.status === "active",
+          ),
         );
-        const hasPsara = v.complianceRecords.some(
-          (c) => c.complianceType === "psara" && c.status === "active",
-        );
-        const complianceScore = (Number(hasGst) + Number(hasPsara)) / 2;
+        const complianceScore =
+          complianceExpected.length === 0
+            ? 1
+            : complianceActive.length / complianceExpected.length;
         reasons.push({
           component: "compliance",
           score: complianceScore,
           weight: weights.compliance,
-          detail: `GST=${hasGst ? "active" : "missing"}, PSARA=${hasPsara ? "active" : "missing"}`,
+          detail: complianceExpected
+            .map((ct) => `${ct}=${complianceActive.includes(ct) ? "active" : "missing"}`)
+            .join(", "),
         });
 
         const filled = [

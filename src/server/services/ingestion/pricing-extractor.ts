@@ -1,9 +1,15 @@
-import { PricingSignalType, PricingUnit } from "@prisma/client";
+import { PricingSignalType, PricingUnit, Region } from "@prisma/client";
+import {
+  CURRENCY_SYMBOLS,
+  detectCurrency,
+  parseLocalizedNumber,
+} from "@/lib/region";
 
 export type PricingCandidate = {
   signalType: PricingSignalType;
   priceValue: number;
   currency: string;
+  region: Region | null;
   unit: PricingUnit;
   minQuantity?: number;
   minContractMonths?: number;
@@ -17,23 +23,16 @@ export interface PricingExtractor {
 }
 
 /**
- * Deterministic pricing extractor. Recognizes common INR rate patterns in
- * security-staffing vendor sites. No network. Safe for CI and seed data.
+ * Deterministic pricing extractor. Recognizes common rate patterns in
+ * security-staffing vendor sites across India, USA, and Europe.
  *
- * Patterns recognized (in order of precedence):
- *   - "₹25,000 per guard per month"           → pgpm_rate
- *   - "Rs 25000 / guard / month"              → pgpm_rate
- *   - "starting at ₹X", "from ₹X"             → starting_price (low confidence)
- *   - "₹120/hr", "Rs. 120 per hour"           → hourly_rate
- *   - "₹2000 per day" / "₹2000 per shift"     → daily_rate / per_shift
- *   - "day shift ₹25000 / night shift ₹27000" → day_rate + night_rate
- *   - "supervisor ₹30000"                     → supervisor_rate
- *   - "₹20,000 - ₹25,000"                     → range_min + range_max
- *   - "minimum 10 guards"                     → attaches minQuantity
- *   - "12 month contract"                     → attaches minContractMonths
+ * Detection order:
+ *   1. Identify dominant currency symbol in the document (₹/Rs/INR, $/USD,
+ *      €/EUR, £/GBP). Page without any currency marker → no signals.
+ *   2. Apply region-appropriate patterns. USA conventions favor per-hour;
+ *      India favors per-guard-per-month; EU is mixed.
  *
- * We deliberately refuse to infer a rate from "contact us" or "competitive
- * pricing" — per the plan, missing pricing stays missing.
+ * Refuses to infer a rate from "contact us" / "rates on request" copy.
  */
 export class DeterministicPricingExtractor implements PricingExtractor {
   async extract(input: { url: string; text: string }): Promise<PricingCandidate[]> {
@@ -41,53 +40,66 @@ export class DeterministicPricingExtractor implements PricingExtractor {
     const normalized = raw.replace(/\s+/g, " ").trim();
     const lower = normalized.toLowerCase();
 
-    if (/\b(contact us|call us|request (?:a )?quote|rates? on request)\b/.test(lower)) {
-      // Explicit signal that the site does not publish rates — return nothing.
+    if (/\b(contact us|call us|request (?:a )?quote|rates? on request|get a quote)\b/.test(lower)) {
       return [];
     }
+
+    const detected = detectCurrency(normalized);
+    if (!detected) return [];
+    const { currency, region, decimalStyle } = detected;
 
     const results: PricingCandidate[] = [];
 
     const minQty = readMinQuantity(lower);
     const minTerm = readMinContract(lower);
 
-    // Pattern: day shift + night shift pair
+    const money = moneyPatternFor(currency, decimalStyle);
+
+    // Day + night pair: "day shift ₹25,000 / night shift ₹27,500".
     const dayNight = lower.match(
-      /day\s*(?:shift|rate)\s*(?:is|:)?\s*(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)[^₹]{0,60}night\s*(?:shift|rate)\s*(?:is|:)?\s*(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)/,
+      new RegExp(
+        `day\\s*(?:shift|rate)\\s*(?:is|:)?\\s*${money.core}[^${money.markers}]{0,60}night\\s*(?:shift|rate)\\s*(?:is|:)?\\s*${money.core}`,
+        "i",
+      ),
     );
     if (dayNight) {
-      const dayText = dayNight[0];
       results.push({
         signalType: PricingSignalType.day_rate,
-        priceValue: parseAmount(dayNight[1]!),
-        currency: "INR",
-        unit: inferPgpmUnit(lower, "day"),
+        priceValue: parseLocalizedNumber(dayNight[1]!, decimalStyle),
+        currency,
+        region,
+        unit: inferMonthly(lower, "day"),
         minQuantity: minQty,
         minContractMonths: minTerm,
-        extractedText: firstSentenceAround(normalized, dayText),
+        extractedText: firstSentenceAround(normalized, dayNight[0]),
         confidence: 0.8,
       });
       results.push({
         signalType: PricingSignalType.night_rate,
-        priceValue: parseAmount(dayNight[2]!),
-        currency: "INR",
-        unit: inferPgpmUnit(lower, "night"),
+        priceValue: parseLocalizedNumber(dayNight[2]!, decimalStyle),
+        currency,
+        region,
+        unit: inferMonthly(lower, "night"),
         minQuantity: minQty,
         minContractMonths: minTerm,
-        extractedText: firstSentenceAround(normalized, dayText),
+        extractedText: firstSentenceAround(normalized, dayNight[0]),
         confidence: 0.8,
       });
     }
 
-    // Pattern: per guard per month
+    // Per-guard-per-month (India + sometimes EU).
     const pgpm = lower.matchAll(
-      /(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)(?:\s*\/\s*|\s+per\s+)guard(?:\s*\/\s*|\s+per\s+)month/g,
+      new RegExp(
+        `${money.rawPrefix}\\s*${money.number}\\s*(?:\\/\\s*|\\s+per\\s+)guard\\s*(?:\\/\\s*|\\s+per\\s+)month`,
+        "gi",
+      ),
     );
     for (const m of pgpm) {
       results.push({
         signalType: PricingSignalType.pgpm_rate,
-        priceValue: parseAmount(m[1]!),
-        currency: "INR",
+        priceValue: parseLocalizedNumber(m[1]!, decimalStyle),
+        currency,
+        region,
         unit: PricingUnit.per_guard_per_month,
         minQuantity: minQty,
         minContractMonths: minTerm,
@@ -96,15 +108,19 @@ export class DeterministicPricingExtractor implements PricingExtractor {
       });
     }
 
-    // Pattern: supervisor rate
+    // Supervisor.
     const sup = lower.match(
-      /supervisor(?:'s)?\s*(?:rate|charges?|is)?\s*(?::|at)?\s*(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)/,
+      new RegExp(
+        `supervisor(?:'s)?\\s*(?:rate|charges?|is)?\\s*(?::|at)?\\s*${money.core}`,
+        "i",
+      ),
     );
     if (sup) {
       results.push({
         signalType: PricingSignalType.supervisor_rate,
-        priceValue: parseAmount(sup[1]!),
-        currency: "INR",
+        priceValue: parseLocalizedNumber(sup[1]!, decimalStyle),
+        currency,
+        region,
         unit: PricingUnit.per_guard_per_month,
         minQuantity: minQty,
         minContractMonths: minTerm,
@@ -113,33 +129,41 @@ export class DeterministicPricingExtractor implements PricingExtractor {
       });
     }
 
-    // Pattern: per hour
+    // Per-hour — common in USA / EU.
     const perHour = lower.matchAll(
-      /(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)\s*(?:\/\s*hr|\/\s*hour|\s*per\s*hour)/g,
+      new RegExp(
+        `${money.rawPrefix}\\s*${money.number}\\s*(?:\\/\\s*(?:hr|h|hour)|\\s*per\\s*(?:hour|hr))`,
+        "gi",
+      ),
     );
     for (const m of perHour) {
       results.push({
         signalType: PricingSignalType.hourly_rate,
-        priceValue: parseAmount(m[1]!),
-        currency: "INR",
+        priceValue: parseLocalizedNumber(m[1]!, decimalStyle),
+        currency,
+        region,
         unit: PricingUnit.per_hour,
         minQuantity: minQty,
         minContractMonths: minTerm,
         extractedText: firstSentenceAround(normalized, m[0]),
-        confidence: 0.8,
+        confidence: 0.85,
       });
     }
 
-    // Pattern: per day / per shift
+    // Per-day / per-shift.
     const perDay = lower.matchAll(
-      /(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)\s*(?:\/\s*day|per\s*day|per\s*shift)/g,
+      new RegExp(
+        `${money.rawPrefix}\\s*${money.number}\\s*(?:\\/\\s*day|per\\s*day|per\\s*shift)`,
+        "gi",
+      ),
     );
     for (const m of perDay) {
       const isShift = /shift/.test(m[0]);
       results.push({
         signalType: isShift ? PricingSignalType.other : PricingSignalType.daily_rate,
-        priceValue: parseAmount(m[1]!),
-        currency: "INR",
+        priceValue: parseLocalizedNumber(m[1]!, decimalStyle),
+        currency,
+        region,
         unit: isShift ? PricingUnit.per_shift : PricingUnit.per_day,
         minQuantity: minQty,
         minContractMonths: minTerm,
@@ -148,15 +172,19 @@ export class DeterministicPricingExtractor implements PricingExtractor {
       });
     }
 
-    // Pattern: range "₹20,000 - ₹25,000"
+    // Range "$X - $Y" / "€X à €Y" / "₹X - ₹Y".
     const range = lower.match(
-      /(?:₹|rs\.?|inr)\s*([\d,]+)\s*(?:-|to)\s*(?:₹|rs\.?|inr)?\s*([\d,]+)/,
+      new RegExp(
+        `${money.rawPrefix}\\s*${money.number}\\s*(?:-|to|à)\\s*${money.rawPrefix}?\\s*${money.number}`,
+        "i",
+      ),
     );
     if (range) {
       results.push({
         signalType: PricingSignalType.range_min,
-        priceValue: parseAmount(range[1]!),
-        currency: "INR",
+        priceValue: parseLocalizedNumber(range[1]!, decimalStyle),
+        currency,
+        region,
         unit: PricingUnit.unspecified,
         minQuantity: minQty,
         extractedText: firstSentenceAround(normalized, range[0]),
@@ -164,8 +192,9 @@ export class DeterministicPricingExtractor implements PricingExtractor {
       });
       results.push({
         signalType: PricingSignalType.range_max,
-        priceValue: parseAmount(range[2]!),
-        currency: "INR",
+        priceValue: parseLocalizedNumber(range[2]!, decimalStyle),
+        currency,
+        region,
         unit: PricingUnit.unspecified,
         minQuantity: minQty,
         extractedText: firstSentenceAround(normalized, range[0]),
@@ -173,16 +202,20 @@ export class DeterministicPricingExtractor implements PricingExtractor {
       });
     }
 
-    // Pattern: starting at / from
+    // Starting at / from (fallback, low confidence).
     if (results.length === 0) {
       const starting = lower.match(
-        /(?:starting\s+(?:at|from)|from)\s*(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d+)?)/,
+        new RegExp(
+          `(?:starting\\s+(?:at|from)|from)\\s*${money.core}`,
+          "i",
+        ),
       );
       if (starting) {
         results.push({
           signalType: PricingSignalType.starting_price,
-          priceValue: parseAmount(starting[1]!),
-          currency: "INR",
+          priceValue: parseLocalizedNumber(starting[1]!, decimalStyle),
+          currency,
+          region,
           unit: PricingUnit.unspecified,
           minQuantity: minQty,
           minContractMonths: minTerm,
@@ -196,14 +229,33 @@ export class DeterministicPricingExtractor implements PricingExtractor {
   }
 }
 
-function parseAmount(s: string): number {
-  return Number(s.replace(/,/g, ""));
+type MoneyPattern = {
+  /** Prefix regex fragment matching the currency symbol (unanchored). */
+  rawPrefix: string;
+  /** Capturing group matching a localized number. */
+  number: string;
+  /** Combined prefix + number, with the number in a capture group. */
+  core: string;
+  /** Characters that mark the start of a price. */
+  markers: string;
+};
+
+function moneyPatternFor(currency: string, decimalStyle: "dot" | "comma"): MoneyPattern {
+  const prefix = CURRENCY_SYMBOLS.find((s) => s.currency === currency)!.pattern.source;
+  const number =
+    decimalStyle === "dot"
+      ? "([\\d,]+(?:\\.\\d+)?)"
+      : "([\\d. ]+(?:,\\d+)?)";
+  const rawPrefix = `(?:${prefix})`;
+  const core = `${rawPrefix}\\s*${number}`;
+  const markers = "₹$€£";
+  return { rawPrefix, number, core, markers };
 }
 
 function readMinQuantity(lower: string): number | undefined {
-  const m = lower.match(/minimum\s+(?:of\s+)?(\d+)\s+(?:guards?|personnel)/);
+  const m = lower.match(/minimum\s+(?:of\s+)?(\d+)\s+(?:guards?|personnel|officers?)/);
   if (m?.[1]) return Number(m[1]);
-  const n = lower.match(/\bmin\.?\s+(\d+)\s+(?:guards?|personnel)/);
+  const n = lower.match(/\bmin\.?\s+(\d+)\s+(?:guards?|personnel|officers?)/);
   return n?.[1] ? Number(n[1]) : undefined;
 }
 
@@ -214,7 +266,7 @@ function readMinContract(lower: string): number | undefined {
   return y?.[1] ? Number(y[1]) * 12 : undefined;
 }
 
-function inferPgpmUnit(lower: string, context: "day" | "night"): PricingUnit {
+function inferMonthly(lower: string, context: "day" | "night"): PricingUnit {
   if (new RegExp(`${context}.{0,40}(?:per guard per month|pgpm|/month|per month)`).test(lower)) {
     return PricingUnit.per_guard_per_month;
   }
@@ -231,7 +283,6 @@ function firstSentenceAround(text: string, match: string): string {
 }
 
 function dedupeByType(items: PricingCandidate[]): PricingCandidate[] {
-  // Keep the highest-confidence item per (type, value) pair.
   const key = (c: PricingCandidate) => `${c.signalType}:${c.priceValue}:${c.unit}`;
   const map = new Map<string, PricingCandidate>();
   for (const item of items) {

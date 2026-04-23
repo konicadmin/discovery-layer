@@ -96,6 +96,7 @@ export async function capturePricingSignals(db: Db, input: CapturePricingInput) 
       signalType: PricingSignalType;
       priceValue: number;
       unit: PricingUnit;
+      currency: string;
     }> = [];
 
     for (const cand of candidates) {
@@ -127,6 +128,7 @@ export async function capturePricingSignals(db: Db, input: CapturePricingInput) 
         signalType: row.signalType,
         priceValue: cand.priceValue,
         unit: row.unit,
+        currency: row.currency,
       });
     }
 
