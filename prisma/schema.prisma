@@ -756,3 +756,83 @@ model RfqMessage {
   @@index([rfqId, createdAt])
   @@map("rfq_messages")
 }
+
+// -------------------------------------------------------------------------
+// Phase 4 — AI task logging, citations, and evals
+// -------------------------------------------------------------------------
+
+enum AiTaskType {
+  requirement_parse
+  shortlist_rationale
+  quote_explanation
+  ops_summary
+}
+
+enum AiTaskStatus {
+  queued
+  running
+  completed
+  failed
+  rejected
+}
+
+model AiTask {
+  id                String       @id
+  taskType          AiTaskType   @map("task_type")
+  status            AiTaskStatus @default(queued)
+  modelName         String       @map("model_name")
+  inputHash         String?      @map("input_hash")
+  inputJson         Json         @map("input_json")
+  outputJson        Json?        @map("output_json")
+  errorMessage      String?      @map("error_message")
+  requestedByUserId String?      @map("requested_by_user_id")
+  entityType        String?      @map("entity_type")
+  entityId          String?      @map("entity_id")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  completedAt       DateTime?    @map("completed_at")
+
+  citations AiTaskCitation[]
+
+  @@index([taskType, status])
+  @@index([entityType, entityId])
+  @@map("ai_tasks")
+}
+
+enum AiCitationSourceType {
+  requirement
+  vendor_profile
+  compliance_record
+  quote
+  quote_line_item
+  shortlist_snapshot
+}
+
+model AiTaskCitation {
+  id          String               @id
+  aiTaskId    String               @map("ai_task_id")
+  sourceType  AiCitationSourceType @map("source_type")
+  sourceId    String               @map("source_id")
+  fieldPath   String?              @map("field_path")
+  excerptText String?              @map("excerpt_text")
+
+  aiTask AiTask @relation(fields: [aiTaskId], references: [id], onDelete: Cascade)
+
+  @@index([aiTaskId])
+  @@map("ai_task_citations")
+}
+
+model AiEvaluation {
+  id                 String     @id
+  taskType           AiTaskType @map("task_type")
+  datasetName        String     @map("dataset_name")
+  modelName          String     @map("model_name")
+  inputJson          Json       @map("input_json")
+  expectedOutputJson Json       @map("expected_output_json")
+  actualOutputJson   Json?      @map("actual_output_json")
+  score              Decimal?   @db.Decimal(5, 4)
+  notes              String?
+  createdAt          DateTime   @default(now()) @map("created_at")
+
+  @@index([taskType, datasetName])
+  @@map("ai_evaluations")
+}

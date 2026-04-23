@@ -5,8 +5,9 @@ staffing in Bengaluru. See `docs/superpowers/plans/` for the full multi-phase
 plan.
 
 This repo currently implements **Phase 1 — Foundation & Data Layer**,
-**Phase 2 — Vendor Onboarding & Ops Verification**, and
-**Phase 3 — Buyer Sourcing Flow**.
+**Phase 2 — Vendor Onboarding & Ops Verification**,
+**Phase 3 — Buyer Sourcing Flow**, and
+**Phase 4 — AI Layer** (assistive, grounded, feature-flagged).
 
 Phase 1 (foundation):
 
@@ -77,6 +78,30 @@ Phase 3 (buyer sourcing):
     optional issue)
   - `GET /api/buyer/rfqs/:id/compare`
   - `POST /api/buyer/rfqs/:id/decision`
+
+Phase 4 (AI layer):
+
+- Schema additions: `ai_tasks`, `ai_task_citations`, `ai_evaluations`
+- `AiProvider` interface with three touchpoints:
+  `extractRequirement`, `explainShortlist`, `explainCompare`
+- **Deterministic provider** ships by default (regex extraction +
+  grounded template generation), so no API keys required. A swap
+  point in `provider-factory.ts` wires in an Anthropic-backed
+  provider when `AI_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` are
+  set.
+- `recordAiTask` wraps every call in an `ai_tasks` row with status,
+  input/output payloads, citations, and error capture — so QA,
+  debugging, and offline evals have a uniform audit trail
+- Grounding guarantees: `explainShortlist` only emits citations
+  matching stored `vendor_shortlist_snapshots`; `explainCompare`
+  only references submitted quotes in the compare view
+- New API routes:
+  - `POST /api/ai/requirements/parse`
+  - `POST /api/ai/shortlists/:requirementId/explain`
+  - `POST /api/ai/rfqs/:rfqId/compare/explain`
+- Buyer UI: AI rationale panels on requirement detail (shortlist
+  explanation) and RFQ detail (compare explanation), both lazy
+  (explicit Explain click)
 
 ## Local setup
 

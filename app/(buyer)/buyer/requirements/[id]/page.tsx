@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/server/db/client";
 import { ShortlistPanel } from "./shortlist-panel";
+import { AiRationalePanel } from "./ai-rationale";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,11 @@ export default async function RequirementDetail({
           matchScore: s.matchScore ? Number(s.matchScore) : null,
           reasons: s.matchReasonsJson,
         }))}
+      />
+
+      <AiRationalePanel
+        title="AI rationale (shortlist)"
+        endpoint={`/api/ai/shortlists/${requirement.id}/explain`}
       />
 
       <section className="bg-white border rounded p-4">

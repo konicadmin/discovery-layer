@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/server/db/client";
 import { compareRfq } from "@/server/services/quotes/compare";
 import { DecisionPanel } from "./decision-panel";
+import { AiRationalePanel } from "../../requirements/[id]/ai-rationale";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,11 @@ export default async function BuyerRfqDetail({
           </table>
         )}
       </section>
+
+      <AiRationalePanel
+        title="AI compare explanation"
+        endpoint={`/api/ai/rfqs/${rfq.id}/compare/explain`}
+      />
 
       <DecisionPanel
         rfqId={rfq.id}
