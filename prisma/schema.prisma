@@ -215,6 +215,7 @@ model VendorProfile {
   evidenceItems     EvidenceItem[]
   publicSnapshots   VendorPublicSnapshot[]
   pageMetrics       VendorPageMetric[]
+  pricingSignals    PublicPricingSignal[]
 
   @@index([profileStatus])
   @@index([verificationStatus])
@@ -1032,4 +1033,79 @@ model DedupeReview {
 
   @@index([reviewStatus])
   @@map("dedupe_reviews")
+}
+
+// -------------------------------------------------------------------------
+// Pricing — public pricing signals gathered from the web
+// -------------------------------------------------------------------------
+//
+// Pricing is separated from generic evidence_items because it needs:
+//   - a structured enum for unit (pgpm, per_hour, per_day, package)
+//   - a normalized_pgpm_rate that makes cross-vendor comparison tractable
+//   - an ops-visible publish/reject lifecycle (service pages mislead often)
+//   - freshness that can expire a signal without deleting it
+//
+// A signal is visible on a public vendor page only when status = published.
+
+enum PricingSignalType {
+  starting_price
+  day_rate
+  night_rate
+  supervisor_rate
+  pgpm_rate
+  hourly_rate
+  daily_rate
+  range_min
+  range_max
+  package_monthly
+  other
+}
+
+enum PricingUnit {
+  per_guard_per_month
+  per_hour
+  per_day
+  per_shift
+  package_monthly
+  unspecified
+}
+
+enum PricingSignalStatus {
+  pending
+  published
+  suppressed
+  rejected
+  expired
+}
+
+model PublicPricingSignal {
+  id                 String              @id
+  vendorProfileId    String              @map("vendor_profile_id")
+  sourceUrlId        String?             @map("source_url_id")
+  crawlRunId         String?             @map("crawl_run_id")
+  signalType         PricingSignalType   @map("signal_type")
+  priceValue         Decimal             @map("price_value") @db.Decimal(12, 2)
+  currency           String              @default("INR")
+  unit               PricingUnit         @default(unspecified)
+  minQuantity        Int?                @map("min_quantity")
+  minContractMonths  Int?                @map("min_contract_months")
+  extractedText      String              @map("extracted_text")
+  normalizedPgpm     Decimal?            @map("normalized_pgpm") @db.Decimal(12, 2)
+  normalizationNotes String?             @map("normalization_notes")
+  confidence         Decimal             @db.Decimal(4, 3)
+  freshnessScore     Decimal?            @map("freshness_score") @db.Decimal(4, 3)
+  observedAt         DateTime            @map("observed_at")
+  expiresAt          DateTime?           @map("expires_at")
+  status             PricingSignalStatus @default(pending)
+  reviewedByUserId   String?             @map("reviewed_by_user_id")
+  reviewedAt         DateTime?           @map("reviewed_at")
+  reviewNotes        String?             @map("review_notes")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+
+  @@index([vendorProfileId, status])
+  @@index([status, createdAt])
+  @@map("public_pricing_signals")
 }

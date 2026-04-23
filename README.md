@@ -137,6 +137,33 @@ Phase 5 (scraped ingestion + public pages):
   - `GET /api/public/vendors/:slug`
   - `POST /api/public/vendors/:slug/claim`
 
+Pricing (public pricing signals):
+
+- Schema: `public_pricing_signals` — first-class so cross-vendor
+  normalization is tractable (signal_type × unit × normalized_pgpm ×
+  validity × review status)
+- `PricingExtractor` interface + `DeterministicPricingExtractor`
+  recognising PGPM, per-hour, per-day, per-shift, day/night pair,
+  supervisor, range, and starting-price patterns. Refuses to infer
+  a rate from "contact us" / "rates on request" copy.
+- `capturePricingSignals` persists candidates as `pending`, writes
+  `normalizedPgpm` + documented `normalizationNotes` (conversion is
+  indicative for per-hour / per-day / per-shift; PGPM passes
+  through; package / starting-price are not normalized)
+- `crawlAndCapturePricing` runs a scheduled re-crawl against a URL
+  bound to a known vendor and captures only pricing
+- Publish / reject / expire workflow: signals appear on the public
+  vendor page only after ops approval. Expired signals are kept
+  for history but hidden.
+- New API routes:
+  - `GET /api/internal/pricing-signals?status=pending`
+  - `POST /api/internal/pricing-signals/:id/decision` (publish/reject)
+  - `POST /api/internal/vendors/:id/capture-pricing` (inline or URL)
+- Admin UI: `/admin/pricing` queue with inline publish/reject
+- Public UI: pricing table on `/vendors/:slug` with caveat banner
+  ("indicative only — confirm with vendor") and per-row
+  normalization notes
+
 ## Local setup
 
 Requires Postgres 14+ on `localhost:5432` with a superuser `discovery`

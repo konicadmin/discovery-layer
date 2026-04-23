@@ -8,6 +8,8 @@ import { NotFoundError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";
 import { logEvent } from "@/server/services/audit/log-event";
+import { capturePricingSignals } from "./pricing";
+import type { PricingExtractor } from "./pricing-extractor";
 
 /**
  * The Fetcher interface is how this phase's crawl pipeline talks to the
@@ -122,5 +124,77 @@ export async function runCrawl(
     });
 
     return { run, candidateId: candidate.id };
+  });
+}
+
+/**
+ * Crawl a URL bound to a known vendor and capture pricing signals from
+ * the fetched text. Use this for re-crawls of a vendor's own pricing page
+ * where identity extraction is unnecessary.
+ */
+export async function crawlAndCapturePricing(
+  db: Db,
+  args: {
+    sourceUrlId: string;
+    vendorProfileId: string;
+    fetcher: Fetcher;
+    pricingExtractor?: PricingExtractor;
+    expiresInDays?: number;
+    actorUserId?: string;
+  },
+) {
+  return withTx(db, async (tx) => {
+    const source = await tx.sourceUrl.findUnique({ where: { id: args.sourceUrlId } });
+    if (!source) throw new NotFoundError("source_url", args.sourceUrlId);
+
+    const run = await tx.crawlRun.create({
+      data: { id: newId(), sourceUrlId: source.id, status: CrawlStatus.running },
+    });
+    let fetchResult: { httpStatus: number; text: string };
+    try {
+      fetchResult = await args.fetcher.fetch(source.url);
+    } catch (err) {
+      await tx.crawlRun.update({
+        where: { id: run.id },
+        data: {
+          status: CrawlStatus.failed,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          fetchedAt: new Date(),
+        },
+      });
+      await tx.sourceUrl.update({
+        where: { id: source.id },
+        data: { status: SourceUrlStatus.failed, lastCrawledAt: new Date() },
+      });
+      throw err;
+    }
+
+    const contentHash = createHash("sha256").update(fetchResult.text).digest("hex");
+    await tx.crawlRun.update({
+      where: { id: run.id },
+      data: {
+        status: CrawlStatus.completed,
+        httpStatus: fetchResult.httpStatus,
+        contentHash,
+        fetchedAt: new Date(),
+      },
+    });
+    await tx.sourceUrl.update({
+      where: { id: source.id },
+      data: { status: SourceUrlStatus.active, lastCrawledAt: new Date() },
+    });
+
+    const capture = await capturePricingSignals(tx, {
+      vendorProfileId: args.vendorProfileId,
+      sourceUrlId: source.id,
+      crawlRunId: run.id,
+      pageText: fetchResult.text,
+      pageUrl: source.url,
+      extractor: args.pricingExtractor,
+      observation: { expiresInDays: args.expiresInDays ?? 90 },
+      actorUserId: args.actorUserId,
+    });
+
+    return { run, created: capture.created, totalCandidates: capture.totalCandidates };
   });
 }

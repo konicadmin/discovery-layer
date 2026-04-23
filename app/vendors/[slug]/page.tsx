@@ -45,6 +45,10 @@ export default async function PublicVendorPage({
           hqCity: true,
           evidenceItems: true,
           serviceCategories: { include: { serviceCategory: true } },
+          pricingSignals: {
+            where: { status: "published" },
+            orderBy: [{ signalType: "asc" }, { observedAt: "desc" }],
+          },
         },
       },
     },
@@ -89,6 +93,67 @@ export default async function PublicVendorPage({
           <section className="mt-6 bg-white border rounded p-4">
             <h2 className="text-sm font-semibold mb-2">About</h2>
             <p className="text-sm">{profile.serviceSummary}</p>
+          </section>
+        )}
+
+        {profile.pricingSignals.length > 0 && (
+          <section className="mt-6 bg-white border rounded p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-semibold">Public pricing signals</h2>
+              <span className="text-xs text-amber-700">
+                indicative only — confirm with vendor
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              These rates were extracted from the vendor&apos;s own public pages.
+              They may exclude statutory costs, have minimum-quantity / term
+              conditions, or be out of date. Treat any normalized per-guard-per-month
+              figure as a rough comparator, not a firm quote.
+            </p>
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-left">
+                <tr>
+                  <th className="px-2 py-1">Signal</th>
+                  <th className="px-2 py-1">Rate</th>
+                  <th className="px-2 py-1">Unit</th>
+                  <th className="px-2 py-1">Indicative PGPM</th>
+                  <th className="px-2 py-1">Conditions</th>
+                  <th className="px-2 py-1">Observed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profile.pricingSignals.map((p) => (
+                  <tr key={p.id} className="border-t align-top">
+                    <td className="px-2 py-1 text-xs">{p.signalType}</td>
+                    <td className="px-2 py-1 font-mono text-sm">
+                      {p.currency} {Number(p.priceValue).toLocaleString("en-IN")}
+                    </td>
+                    <td className="px-2 py-1 text-xs">{p.unit}</td>
+                    <td className="px-2 py-1 font-mono text-sm">
+                      {p.normalizedPgpm != null
+                        ? `₹${Number(p.normalizedPgpm).toLocaleString("en-IN")}`
+                        : "—"}
+                      {p.normalizationNotes && (
+                        <div className="text-[11px] text-gray-500">
+                          {p.normalizationNotes}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-xs">
+                      {[
+                        p.minQuantity ? `min ${p.minQuantity} guards` : null,
+                        p.minContractMonths ? `${p.minContractMonths}mo term` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </td>
+                    <td className="px-2 py-1 text-xs">
+                      {p.observedAt.toISOString().slice(0, 10)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </section>
         )}
 
