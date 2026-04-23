@@ -1,5 +1,6 @@
-import { ProfileStatus, type PrismaClient, VerificationStatus } from "@prisma/client";
+import { ProfileStatus, VerificationStatus } from "@prisma/client";
 import { NotFoundError } from "@/lib/errors";
+import { type Db, withTx } from "@/server/db/with-tx";
 import { logEvent } from "@/server/services/audit/log-event";
 import {
   assertProfileTransition,
@@ -14,8 +15,8 @@ export type TransitionInput = {
   notes?: string;
 };
 
-export async function transitionVendor(db: PrismaClient, input: TransitionInput) {
-  return db.$transaction(async (tx) => {
+export async function transitionVendor(db: Db, input: TransitionInput) {
+  return withTx(db, async (tx) => {
     const profile = await tx.vendorProfile.findUnique({
       where: { id: input.vendorProfileId },
     });

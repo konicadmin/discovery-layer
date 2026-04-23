@@ -4,7 +4,10 @@ B2B procurement platform for fragmented service categories. V1 wedge: security
 staffing in Bengaluru. See `docs/superpowers/plans/` for the full multi-phase
 plan.
 
-This repo currently implements **Phase 1 — Foundation & Data Layer**:
+This repo currently implements **Phase 1 — Foundation & Data Layer** and
+**Phase 2 — Vendor Onboarding & Ops Verification**.
+
+Phase 1 (foundation):
 
 - Next.js 15 + TypeScript + Tailwind scaffold
 - Postgres + Prisma schema (organizations, vendors, requirements, RFQs,
@@ -14,9 +17,38 @@ This repo currently implements **Phase 1 — Foundation & Data Layer**:
   issuance, append-only quote versioning, audit logging
 - Internal admin shell at `/admin` (vendors, verification queue,
   requirements, RFQs with compare view, audit log)
-- Two API routes: `POST /api/vendors`, `POST /api/vendors/:id/transition`
 - Vitest integration tests against real Postgres
 - Seed script for Bengaluru + 5 sample vendors at varying lifecycle stages
+
+Phase 2 (onboarding + verification):
+
+- Schema additions: `vendor_claims`, `notifications`
+- Claim flow: send claim → invite notification → accept (binds existing
+  user or creates one and grants `vendor_admin`)
+- Vendor profile services: profile/org update, service area, compliance
+  upsert, document attach
+- Verification review workflow: open, assign, set checklist item
+  (pending/pass/fail/not_applicable), request changes, approve, reject —
+  approval is **gated** on every required checklist item being
+  `pass` or `not_applicable`
+- Notifications: dispatcher writes a `notifications` row and logs the
+  template; swap the inner `deliver` with a real provider later
+- Document review: ops marks docs `verified`/`rejected` with notes
+- `withTx` helper so services compose without nested `$transaction`
+- New API routes:
+  - `POST /api/vendors/:id/send-claim`, `POST /api/vendor-claims/accept`
+  - `PATCH /api/vendors/:id/profile`, `POST /api/vendors/:id/documents`
+  - `POST /api/vendors/:id/submit-for-review`
+  - `POST /api/admin/reviews/:id/assign`
+  - `PATCH /api/admin/reviews/:id/checklist-items/:itemId`
+  - `POST /api/admin/reviews/:id/decision` (approve/reject/request_changes)
+  - `POST /api/admin/documents/:id/review`
+- New admin UI: review detail page at `/admin/reviews/:id` with inline
+  checklist editing and a decision panel that disables `Approve` until
+  all required items are resolved
+- New vendor portal: `/vendor/claim` for claim acceptance,
+  `/vendor/:id` onboarding dashboard with completion checklist and
+  Submit-for-review button
 
 ## Local setup
 

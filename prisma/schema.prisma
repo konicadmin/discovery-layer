@@ -118,6 +118,8 @@ model User {
   rfqs             Rfq[]                    @relation("RfqCreator")
   quotes           Quote[]                  @relation("QuoteCreator")
   auditEvents      AuditEvent[]
+  claims           VendorClaim[]
+  notifications    Notification[]
 
   @@map("users")
 }
@@ -209,6 +211,7 @@ model VendorProfile {
   rfqRecipients     RfqRecipient[]
   quotes            Quote[]
   shortlistEntries  VendorShortlistSnapshot[]
+  claims            VendorClaim[]
 
   @@index([profileStatus])
   @@index([verificationStatus])
@@ -633,4 +636,65 @@ model AuditEvent {
   @@index([entityType, entityId])
   @@index([actorUserId])
   @@map("audit_events")
+}
+
+// -------------------------------------------------------------------------
+// Phase 2 — Vendor claims & notifications
+// -------------------------------------------------------------------------
+
+enum ClaimStatus {
+  pending
+  claimed
+  expired
+  cancelled
+}
+
+model VendorClaim {
+  id              String      @id
+  vendorProfileId String      @map("vendor_profile_id")
+  claimEmail      String?     @map("claim_email")
+  claimPhone      String?     @map("claim_phone")
+  claimToken      String      @unique @map("claim_token")
+  status          ClaimStatus @default(pending)
+  claimedByUserId String?     @map("claimed_by_user_id")
+  expiresAt       DateTime    @map("expires_at")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  claimedBy     User?         @relation(fields: [claimedByUserId], references: [id])
+
+  @@index([vendorProfileId, status])
+  @@map("vendor_claims")
+}
+
+enum NotificationChannel {
+  email
+  sms
+  in_app
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+  delivered
+}
+
+model Notification {
+  id             String              @id
+  organizationId String?             @map("organization_id")
+  userId         String?             @map("user_id")
+  channel        NotificationChannel
+  templateKey    String              @map("template_key")
+  payloadJson    Json?               @map("payload_json")
+  status         NotificationStatus  @default(queued)
+  errorMessage   String?             @map("error_message")
+  sentAt         DateTime?           @map("sent_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("notifications")
 }

@@ -11,6 +11,8 @@ import {
   OrganizationType,
   PrismaClient,
   ProfileStatus,
+  ReviewStatus,
+  ReviewType,
   VendorSource,
   VerificationStatus,
 } from "@prisma/client";
@@ -200,6 +202,36 @@ async function main() {
     }
   }
 
+  // Open a review for any vendor in submitted/under_review without one.
+  const inFlight = await prisma.vendorProfile.findMany({
+    where: { profileStatus: { in: [ProfileStatus.submitted, ProfileStatus.under_review] } },
+    include: {
+      reviews: { where: { status: { in: [ReviewStatus.pending, ReviewStatus.in_review] } } },
+      serviceCategories: true,
+    },
+  });
+  for (const v of inFlight) {
+    if (v.reviews.length > 0) continue;
+    const review = await prisma.verificationReview.create({
+      data: { id: newId(), vendorProfileId: v.id, reviewType: ReviewType.initial },
+    });
+    const primary = v.serviceCategories.find((c) => c.primaryCategory) ?? v.serviceCategories[0];
+    if (primary) {
+      const items = await prisma.verificationChecklistItem.findMany({
+        where: { serviceCategoryId: primary.serviceCategoryId, active: true },
+      });
+      if (items.length > 0) {
+        await prisma.verificationReviewItem.createMany({
+          data: items.map((c) => ({
+            id: newId(),
+            verificationReviewId: review.id,
+            checklistItemId: c.id,
+          })),
+        });
+      }
+    }
+  }
+
   const stats = {
     cities: await prisma.city.count(),
     categories: await prisma.serviceCategory.count(),
@@ -207,6 +239,9 @@ async function main() {
     organizations: await prisma.organization.count(),
     vendorProfiles: await prisma.vendorProfile.count(),
     users: await prisma.user.count(),
+    openReviews: await prisma.verificationReview.count({
+      where: { status: { in: [ReviewStatus.pending, ReviewStatus.in_review] } },
+    }),
   };
   console.log("seed complete:", stats);
 }
