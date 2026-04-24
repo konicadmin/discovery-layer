@@ -114,3 +114,30 @@ describe("metered API pricing extractor", () => {
     expect(bulk?.priceValue).toBeCloseTo(0.4);
   });
 });
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const fixture = (name: string) =>
+  readFileSync(join(__dirname, "fixtures", "pricing-pages", name), "utf8");
+
+describe("real-page fixtures", () => {
+  const extractor = new DeterministicPricingExtractor();
+
+  it("cursor.txt yields at least one per_seat_per_month signal", async () => {
+    const r = await extractor.extract({ url: "x", text: fixture("cursor.txt") });
+    expect(r.some((s) => s.unit === "per_seat_per_month")).toBe(true);
+  });
+
+  it("openai.txt yields token signals in both directions", async () => {
+    const r = await extractor.extract({ url: "x", text: fixture("openai.txt") });
+    expect(r.some((s) => s.unit === "per_1m_input_tokens")).toBe(true);
+    expect(r.some((s) => s.unit === "per_1m_output_tokens")).toBe(true);
+  });
+
+  it("notion.txt yields at least two seat-month signals", async () => {
+    const r = await extractor.extract({ url: "x", text: fixture("notion.txt") });
+    const seats = r.filter((s) => s.unit === "per_seat_per_month");
+    expect(seats.length).toBeGreaterThanOrEqual(2);
+  });
+});
