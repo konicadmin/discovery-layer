@@ -66,6 +66,7 @@ export default async function PublicVendorPage({
       ? await prisma.sourceUrl.findMany({ where: { id: { in: sourceIds } } })
       : [];
   const sourceById = new Map(sources.map((source) => [source.id, source.url]));
+  const pageUrl = absoluteUrl(`/vendors/${snap.slug}`);
 
   // Best-effort page-view counter.
   const today = new Date();
@@ -93,7 +94,8 @@ export default async function PublicVendorPage({
             "@context": "https://schema.org",
             "@type": "Organization",
             name: profile.organization.displayName,
-            url: profile.organization.website ?? absoluteUrl(`/vendors/${snap.slug}`),
+            url: profile.organization.website ?? pageUrl,
+            mainEntityOfPage: pageUrl,
             areaServed: profile.organization.region,
             address: profile.hqCity
               ? {
@@ -108,9 +110,22 @@ export default async function PublicVendorPage({
               price: Number(p.priceValue),
               priceCurrency: p.currency,
               availability: "https://schema.org/InStock",
+              priceSpecification: {
+                "@type": "UnitPriceSpecification",
+                price: Number(p.priceValue),
+                priceCurrency: p.currency,
+                unitText: p.unit,
+              },
               url: p.sourceUrlId
-                ? sourceById.get(p.sourceUrlId) ?? absoluteUrl(`/vendors/${snap.slug}`)
-                : absoluteUrl(`/vendors/${snap.slug}`),
+                ? sourceById.get(p.sourceUrlId) ?? pageUrl
+                : pageUrl,
+              isBasedOn: p.sourceUrlId
+                ? {
+                    "@type": "WebPage",
+                    url: sourceById.get(p.sourceUrlId) ?? pageUrl,
+                    dateModified: p.observedAt.toISOString(),
+                  }
+                : undefined,
               description: p.extractedText,
             })),
           }),

@@ -10,6 +10,8 @@ export async function GET() {
     SITE_DESCRIPTION,
     "",
     "## Canonical Entry Points",
+    `- [MCP Endpoint](${absoluteUrl("/api/mcp")})`,
+    `- [MCP Discovery Metadata](${absoluteUrl("/.well-known/mcp.json")})`,
     `- [Global Pricing Index](${absoluteUrl("/pricing.md")})`,
     `- [Full Agent Context](${absoluteUrl("/llms-full.txt")})`,
     `- [Sitemap](${absoluteUrl("/sitemap.xml")})`,
@@ -20,6 +22,7 @@ export async function GET() {
     "- Pages may report that no public pricing was found; that is an evidence state, not generated pricing.",
     "",
     "## Crawl Guidance",
+    "- Prefer the MCP endpoint for direct structured access when your agent supports MCP.",
     "- Prefer markdown endpoints when available.",
     "- Use public vendor pages and pricing indexes as canonical sources.",
     "- Do not treat pending internal review rows as public facts.",
@@ -30,4 +33,3 @@ export async function GET() {
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
 }
-

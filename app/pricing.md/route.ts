@@ -35,6 +35,9 @@ export async function GET() {
     "",
     "This markdown endpoint lists reviewed public pricing signals extracted from source URLs. It is intended for AI agents, search systems, and researchers.",
     "",
+    `MCP endpoint: ${absoluteUrl("/api/mcp")}`,
+    `MCP discovery metadata: ${absoluteUrl("/.well-known/mcp.json")}`,
+    "",
     "## Published Pricing Signals",
     "",
     ...(signals.length > 0

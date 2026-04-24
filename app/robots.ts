@@ -10,6 +10,9 @@ export default function robots(): MetadataRoute.Robots {
       "/pricing/",
       "/llms.txt",
       "/llms-full.txt",
+      "/.well-known/ai-plugin.json",
+      "/.well-known/mcp.json",
+      "/api/mcp",
       "/sitemap.xml",
     ],
     disallow: ["/admin", "/buyer", "/vendor", "/api/internal", "/api/buyer"],
@@ -32,4 +35,3 @@ export default function robots(): MetadataRoute.Robots {
     host: getSiteUrl(),
   };
 }
-

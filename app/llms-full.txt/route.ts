@@ -60,6 +60,9 @@ export async function GET() {
     "Discovery Layer tracks public pricing evidence across vendors, categories, and regions. The site is designed for humans, search engines, and AI agents that need source-linked pricing context.",
     "",
     "## Important URLs",
+    `- MCP endpoint: ${absoluteUrl("/api/mcp")}`,
+    `- MCP discovery metadata: ${absoluteUrl("/.well-known/mcp.json")}`,
+    `- Legacy plugin manifest: ${absoluteUrl("/.well-known/ai-plugin.json")}`,
     `- Global pricing index: ${absoluteUrl("/pricing")}`,
     `- Markdown pricing index: ${absoluteUrl("/pricing.md")}`,
     `- Sitemap: ${absoluteUrl("/sitemap.xml")}`,
@@ -104,4 +107,3 @@ export async function GET() {
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
 }
-
