@@ -58,6 +58,39 @@ const tools = [
       additionalProperties: false,
     },
   },
+  {
+    name: "list_products",
+    description: "List products for a vendor. Arg: vendorSlug.",
+    inputSchema: {
+      type: "object",
+      required: ["vendorSlug"],
+      properties: { vendorSlug: { type: "string" } },
+    },
+  },
+  {
+    name: "get_plans",
+    description: "List plans for a product. Args: vendorSlug, productSlug.",
+    inputSchema: {
+      type: "object",
+      required: ["vendorSlug", "productSlug"],
+      properties: {
+        vendorSlug: { type: "string" },
+        productSlug: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "get_product_pricing",
+    description: "List published pricing signals for a product. Args: vendorSlug, productSlug.",
+    inputSchema: {
+      type: "object",
+      required: ["vendorSlug", "productSlug"],
+      properties: {
+        vendorSlug: { type: "string" },
+        productSlug: { type: "string" },
+      },
+    },
+  },
 ];
 
 function rpcResult(id: JsonRpcRequest["id"], result: unknown) {
@@ -82,6 +115,17 @@ function textContent(data: unknown) {
       {
         type: "text",
         text: JSON.stringify(data, null, 2),
+      },
+    ],
+  };
+}
+
+function textResult(text: string) {
+  return {
+    content: [
+      {
+        type: "text",
+        text,
       },
     ],
   };
@@ -278,6 +322,64 @@ async function callTool(params: unknown) {
   if (call.name === "discovery.list_markets") return textContent(await listMarkets());
   if (call.name === "discovery.search_pricing") return textContent(await searchPricing(args));
   if (call.name === "discovery.get_vendor") return textContent(await getVendor(args));
+  if (call.name === "list_products") {
+    const { vendorSlug } = args as { vendorSlug: string };
+    const snap = await prisma.vendorPublicSnapshot.findUnique({
+      where: { slug: vendorSlug },
+      include: { vendorProfile: { include: { products: true } } },
+    });
+    if (!snap) return textResult(`vendor ${vendorSlug} not found`);
+    const lines = snap.vendorProfile.products.map(
+      (p) => `- ${p.slug}: ${p.displayName} (${p.productKind})`,
+    );
+    return textResult(lines.length ? lines.join("\n") : "no products");
+  }
+  if (call.name === "get_plans") {
+    const { vendorSlug, productSlug } = args as {
+      vendorSlug: string;
+      productSlug: string;
+    };
+    const snap = await prisma.vendorPublicSnapshot.findUnique({
+      where: { slug: vendorSlug },
+    });
+    if (!snap) return textResult(`vendor ${vendorSlug} not found`);
+    const product = await prisma.product.findFirst({
+      where: { vendorProfileId: snap.vendorProfileId, slug: productSlug },
+      include: { plans: { orderBy: { displayName: "asc" } } },
+    });
+    if (!product) return textResult(`product ${productSlug} not found`);
+    const lines = product.plans.map(
+      (p) => `- ${p.slug}: ${p.displayName} [${p.tier}${p.isFree ? ", free" : ""}]`,
+    );
+    return textResult(lines.length ? lines.join("\n") : "no plans");
+  }
+  if (call.name === "get_product_pricing") {
+    const { vendorSlug, productSlug } = args as {
+      vendorSlug: string;
+      productSlug: string;
+    };
+    const snap = await prisma.vendorPublicSnapshot.findUnique({
+      where: { slug: vendorSlug },
+    });
+    if (!snap) return textResult(`vendor ${vendorSlug} not found`);
+    const product = await prisma.product.findFirst({
+      where: { vendorProfileId: snap.vendorProfileId, slug: productSlug },
+      include: {
+        pricingSignals: {
+          where: { status: PricingSignalStatus.published },
+          orderBy: { observedAt: "desc" },
+          include: { plan: true },
+        },
+      },
+    });
+    if (!product) return textResult(`product ${productSlug} not found`);
+    const lines = product.pricingSignals.map(
+      (s) =>
+        `- ${s.plan?.displayName ?? "(no plan)"}: ${s.currency} ${s.priceValue} ${s.unit}` +
+        ` · observed ${s.observedAt.toISOString().slice(0, 10)}`,
+    );
+    return textResult(lines.length ? lines.join("\n") : "no published signals");
+  }
   throw new Error(`Unknown tool: ${call.name ?? "(missing)"}`);
 }
 
