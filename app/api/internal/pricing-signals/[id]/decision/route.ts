@@ -6,8 +6,7 @@ import {
   rejectPricingSignal,
 } from "@/server/services/ingestion/pricing";
 import { errorResponse } from "@/lib/api/handle-error";
-import { requireRequestSession } from "@/server/auth/request-session";
-import { requireInternal } from "@/server/services/authz/guards";
+import { requireInternalRequestSession } from "@/server/auth/internal-session";
 
 const BodySchema = z.object({
   decision: z.enum(["publish", "reject"]),
@@ -22,8 +21,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
   try {
-    const session = await requireRequestSession(req, prisma);
-    requireInternal(session);
+    const session = await requireInternalRequestSession(req, prisma);
     if (parsed.data.decision === "publish") {
       const updated = await publishPricingSignal(prisma, {
         signalId: id,
