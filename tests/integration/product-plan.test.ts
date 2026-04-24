@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { getPrisma } from "./setup";
 import { newId } from "@/lib/id";
-import { PricingUnit } from "@/generated/prisma";
+import {
+  PricingUnit,
+  PricingSignalStatus,
+  PricingSignalType,
+} from "@/generated/prisma";
 
 describe("Product + Plan models", () => {
   it("creates a Product that belongs to a VendorProfile and has many Plans", async () => {
@@ -73,5 +77,50 @@ describe("PricingUnit enum coverage", () => {
     expect(PricingUnit.flat_monthly).toBe("flat_monthly");
     expect(PricingUnit.flat_annual).toBe("flat_annual");
     expect(PricingUnit.usage_metered).toBe("usage_metered");
+  });
+});
+
+describe("PublicPricingSignal → Product/Plan link", () => {
+  it("attaches a pricing signal to a specific plan", async () => {
+    const prisma = getPrisma();
+    const org = await prisma.organization.create({
+      data: { id: newId(), legalName: "Cursor Inc.", displayName: "Cursor",
+              type: "vendor", region: "US" },
+    });
+    const vendor = await prisma.vendorProfile.create({
+      data: { id: newId(), organizationId: org.id, createdBySource: "import" },
+    });
+    const product = await prisma.product.create({
+      data: { id: newId(), vendorProfileId: vendor.id, slug: "cursor",
+              displayName: "Cursor", productKind: "app" },
+    });
+    const plan = await prisma.plan.create({
+      data: { id: newId(), productId: product.id, slug: "pro",
+              displayName: "Pro", tier: "pro", isFree: false },
+    });
+
+    const signal = await prisma.publicPricingSignal.create({
+      data: {
+        id: newId(),
+        vendorProfileId: vendor.id,
+        productId: product.id,
+        planId: plan.id,
+        status: PricingSignalStatus.published,
+        signalType: PricingSignalType.starting_price,
+        priceValue: "20",
+        currency: "USD",
+        unit: "per_seat_per_month",
+        confidence: "0.900",
+        extractedText: "$20/month per user",
+        observedAt: new Date(),
+      },
+    });
+
+    const loaded = await prisma.publicPricingSignal.findUniqueOrThrow({
+      where: { id: signal.id },
+      include: { product: true, plan: true },
+    });
+    expect(loaded.product?.slug).toBe("cursor");
+    expect(loaded.plan?.slug).toBe("pro");
   });
 });

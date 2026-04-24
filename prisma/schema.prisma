@@ -254,6 +254,7 @@ model Product {
   updatedAt       DateTime @updatedAt      @map("updated_at")
 
   plans           Plan[]
+  pricingSignals  PublicPricingSignal[]
 
   @@unique([vendorProfileId, slug])
   @@index([slug])
@@ -271,6 +272,8 @@ model Plan {
   description String?
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  pricingSignals PublicPricingSignal[]
 
   @@unique([productId, slug])
   @@map("plans")
@@ -1214,9 +1217,16 @@ model PublicPricingSignal {
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
 
+  productId  String?  @map("product_id")
+  product    Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  planId     String?  @map("plan_id")
+  plan       Plan?    @relation(fields: [planId], references: [id], onDelete: SetNull)
+
   vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
 
   @@index([vendorProfileId, status])
   @@index([status, createdAt])
+  @@index([productId])
+  @@index([planId])
   @@map("public_pricing_signals")
 }
