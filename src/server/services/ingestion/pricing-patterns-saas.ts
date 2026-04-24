@@ -136,6 +136,62 @@ export function extractTokenPricing(text: string): PricingCandidate[] {
   return out;
 }
 
+const PER_CALL_RE = new RegExp(
+  "(?<symbol>[\\$€£₹])\\s*(?<amount>\\d[\\d,.]*)\\s*(?:/|per)\\s*(?:api\\s*call|call)",
+  "gi",
+);
+
+const PER_REQUEST_RE = new RegExp(
+  "(?<symbol>[\\$€£₹])\\s*(?<amount>\\d[\\d,.]*)\\s*(?:/|per)\\s*request",
+  "gi",
+);
+
+const PER_1K_REQUESTS_RE = new RegExp(
+  "(?<symbol>[\\$€£₹])\\s*(?<amount>\\d[\\d,.]*)\\s*(?:/|per)\\s*(?:1\\s*k|1\\s*thousand|thousand|K)\\s*requests?",
+  "gi",
+);
+
+function meter(
+  text: string,
+  re: RegExp,
+  unit: PricingCandidate["unit"],
+  seen: Set<string>,
+): PricingCandidate[] {
+  const out: PricingCandidate[] = [];
+  for (const m of text.matchAll(re)) {
+    const amount = parseLocalizedNumber(m.groups?.amount ?? "", "dot");
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const symbol = m.groups?.symbol ?? "";
+    const currency = CURRENCY_BY_SYMBOL[symbol] ?? "USD";
+    const key = `${currency}:${amount}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      signalType: PricingSignalType.starting_price,
+      priceValue: amount,
+      currency,
+      region: null,
+      unit,
+      extractedText: m[0],
+      confidence: 0.8,
+    });
+  }
+  return out;
+}
+
+export function extractMeteredPricing(text: string): PricingCandidate[] {
+  // Shared seen-set across all three regexes: "$0.40 per 1K requests" must
+  // classify as per_1k_requests only, not both per_1k_requests AND per_request.
+  // Bulk-first ordering ensures per_1k_requests claims the price before
+  // PER_REQUEST_RE can match the trailing "per request" substring.
+  const seen = new Set<string>();
+  return [
+    ...meter(text, PER_1K_REQUESTS_RE, PricingUnit.per_1k_requests, seen),
+    ...meter(text, PER_CALL_RE, PricingUnit.per_api_call, seen),
+    ...meter(text, PER_REQUEST_RE, PricingUnit.per_request, seen),
+  ];
+}
+
 export function extractSaasSeatMonth(text: string): PricingCandidate[] {
   const out: PricingCandidate[] = [];
   const seen = new Set<string>();

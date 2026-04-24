@@ -4,7 +4,11 @@ import {
   detectCurrency,
   parseLocalizedNumber,
 } from "@/lib/region";
-import { extractSaasSeatMonth, extractTokenPricing } from "./pricing-patterns-saas";
+import {
+  extractMeteredPricing,
+  extractSaasSeatMonth,
+  extractTokenPricing,
+} from "./pricing-patterns-saas";
 
 export type PricingCandidate = {
   signalType: PricingSignalType;
@@ -47,9 +51,12 @@ export class DeterministicPricingExtractor implements PricingExtractor {
     // AI token pricing ($/1M tokens, $/1K tokens) likewise runs independently
     // of the security-staffing currency gate so token-only pages still emit.
     const tokenSignals = extractTokenPricing(normalized);
+    // Metered API pricing (per-call / per-request / per-1K-requests) is also
+    // currency-gate-independent so per-call-only pages still emit.
+    const meteredSignals = extractMeteredPricing(normalized);
 
     const detected = detectCurrency(normalized);
-    if (!detected) return [...saasSignals, ...tokenSignals];
+    if (!detected) return [...saasSignals, ...tokenSignals, ...meteredSignals];
     const { currency, region, decimalStyle } = detected;
 
     const results: PricingCandidate[] = [];
@@ -296,6 +303,7 @@ export class DeterministicPricingExtractor implements PricingExtractor {
 
     results.push(...saasSignals);
     results.push(...tokenSignals);
+    results.push(...meteredSignals);
     return dedupeByType(results);
   }
 }

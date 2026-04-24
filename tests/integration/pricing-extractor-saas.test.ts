@@ -83,3 +83,34 @@ describe("AI token pricing extractor", () => {
     expect(inTok!.priceValue).toBe(0.002);
   });
 });
+
+describe("metered API pricing extractor", () => {
+  const extractor = new DeterministicPricingExtractor();
+
+  it("extracts '$0.0042 per API call'", async () => {
+    const result = await extractor.extract({
+      url: "https://example.com",
+      text: "Vision API billed at $0.0042 per API call.",
+    });
+    const api = result.find((r) => r.unit === "per_api_call");
+    expect(api?.priceValue).toBeCloseTo(0.0042);
+  });
+
+  it("extracts '$0.005 per request'", async () => {
+    const result = await extractor.extract({
+      url: "https://example.com",
+      text: "Pricing: $0.005 per request, no minimum.",
+    });
+    const req = result.find((r) => r.unit === "per_request");
+    expect(req?.priceValue).toBeCloseTo(0.005);
+  });
+
+  it("extracts '$0.40 per 1K requests'", async () => {
+    const result = await extractor.extract({
+      url: "https://example.com",
+      text: "Standard tier: $0.40 per 1K requests.",
+    });
+    const bulk = result.find((r) => r.unit === "per_1k_requests");
+    expect(bulk?.priceValue).toBeCloseTo(0.4);
+  });
+});
