@@ -1150,11 +1150,34 @@ enum PricingSignalType {
 }
 
 enum PricingUnit {
+  // Security staffing (retained for backward compatibility)
   per_guard_per_month
   per_hour
   per_day
   per_shift
   package_monthly
+
+  // SaaS / seats
+  per_seat_per_month
+  per_seat_per_year
+  per_user_per_month
+
+  // AI / tokens
+  per_1m_input_tokens
+  per_1m_output_tokens
+  per_1k_tokens
+
+  // API / metered
+  per_api_call
+  per_request
+  per_1k_requests
+  usage_metered
+
+  // Flat
+  flat_monthly
+  flat_annual
+  one_time
+
   unspecified
 }
 

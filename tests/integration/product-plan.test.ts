@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getPrisma } from "./setup";
 import { newId } from "@/lib/id";
+import { PricingUnit } from "@/generated/prisma";
 
 describe("Product + Plan models", () => {
   it("creates a Product that belongs to a VendorProfile and has many Plans", async () => {
@@ -58,5 +59,19 @@ describe("Product + Plan models", () => {
                 displayName: "Foo 2", productKind: "app" },
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe("PricingUnit enum coverage", () => {
+  it("includes SaaS/token/metered units", () => {
+    expect(PricingUnit.per_seat_per_month).toBe("per_seat_per_month");
+    expect(PricingUnit.per_user_per_month).toBe("per_user_per_month");
+    expect(PricingUnit.per_1m_input_tokens).toBe("per_1m_input_tokens");
+    expect(PricingUnit.per_1m_output_tokens).toBe("per_1m_output_tokens");
+    expect(PricingUnit.per_api_call).toBe("per_api_call");
+    expect(PricingUnit.per_request).toBe("per_request");
+    expect(PricingUnit.flat_monthly).toBe("flat_monthly");
+    expect(PricingUnit.flat_annual).toBe("flat_annual");
+    expect(PricingUnit.usage_metered).toBe("usage_metered");
   });
 });
