@@ -1,0 +1,1141 @@
+// Discovery Layer — foundation schema (Phase B)
+// Implements the design in docs/superpowers/plans/2026-04-23-foundation-data-layer.md
+//
+// Conventions:
+// - String IDs (ULID) generated at the application layer.
+// - Timestamps: created_at / updated_at on every mutable record.
+// - Quote submissions are append-only: new submissions create new versions
+//   (uniqueness on rfq_id + vendor_profile_id + version_number).
+// - Verification lifecycle (vendor_profiles.verification_status) is intentionally
+//   separate from onboarding lifecycle (vendor_profiles.profile_status).
+// - `created_by_source` and `source_type` exist so Phase 5 (scraped ingestion)
+//   can attach provenance without rewriting the schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------------------
+// Reference data
+// -------------------------------------------------------------------------
+
+model City {
+  id        String   @id
+  name      String
+  state     String
+  country   String   @default("IN")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  vendorHqs         VendorProfile[]     @relation("VendorHqCity")
+  vendorAreas       VendorServiceArea[]
+  buyerRequirements BuyerRequirement[]
+
+  @@unique([name, state])
+  @@map("cities")
+}
+
+model ServiceCategory {
+  id        String   @id
+  code      String   @unique
+  label     String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  vendorCategories  VendorServiceCategory[]
+  buyerRequirements BuyerRequirement[]
+  checklistItems    VerificationChecklistItem[]
+
+  @@map("service_categories")
+}
+
+// -------------------------------------------------------------------------
+// Identity
+// -------------------------------------------------------------------------
+
+enum OrganizationType {
+  buyer
+  vendor
+  internal
+}
+
+enum OrganizationStatus {
+  active
+  suspended
+  archived
+}
+
+/// Regulatory region. Scopes trust model, compliance checklists,
+/// currency defaults, and shortlist filtering. A vendor operating in
+/// multiple regions is modeled as multiple vendor profiles today;
+/// a future multi-region table can be added without schema rewrite.
+enum Region {
+  IN
+  US
+  EU
+}
+
+model Organization {
+  id              String             @id
+  type            OrganizationType
+  legalName       String             @map("legal_name")
+  displayName     String             @map("display_name")
+  gstin           String?
+  taxId           String?            @map("tax_id")
+  website         String?
+  primaryPhone    String?            @map("primary_phone")
+  region          Region             @default(IN)
+  defaultCurrency String             @default("INR") @map("default_currency")
+  status          OrganizationStatus @default(active)
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  memberships       OrganizationMembership[]
+  vendorProfile     VendorProfile?
+  buyerRequirements BuyerRequirement[]
+  rfqs              Rfq[]
+
+  @@index([type, status])
+  @@index([region])
+  @@map("organizations")
+}
+
+enum UserStatus {
+  active
+  invited
+  suspended
+}
+
+model User {
+  id             String     @id
+  email          String?    @unique
+  phone          String?    @unique
+  name           String
+  authProviderId String?    @map("auth_provider_id")
+  passwordHash   String?    @map("password_hash")
+  status         UserStatus @default(active)
+  lastLoginAt    DateTime?  @map("last_login_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  memberships      OrganizationMembership[]
+  uploadedFiles    DocumentFile[]
+  reviewedDocs     VendorDocument[]         @relation("DocReviewer")
+  reviews          VerificationReview[]     @relation("ReviewAssignee")
+  reviewsCompleted VerificationReview[]     @relation("ReviewCompleter")
+  reviewItems      VerificationReviewItem[]
+  requirements     BuyerRequirement[]       @relation("RequirementCreator")
+  rfqs             Rfq[]                    @relation("RfqCreator")
+  quotes           Quote[]                  @relation("QuoteCreator")
+  auditEvents      AuditEvent[]
+  claims           VendorClaim[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+enum MembershipRole {
+  owner
+  buyer_admin
+  buyer_member
+  vendor_admin
+  vendor_member
+  ops_admin
+  ops_reviewer
+}
+
+enum MembershipStatus {
+  active
+  invited
+  removed
+}
+
+model OrganizationMembership {
+  id             String           @id
+  organizationId String           @map("organization_id")
+  userId         String           @map("user_id")
+  role           MembershipRole
+  status         MembershipStatus @default(active)
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, role])
+  @@index([userId])
+  @@map("organization_memberships")
+}
+
+// -------------------------------------------------------------------------
+// Vendor profile and capability
+// -------------------------------------------------------------------------
+
+enum ProfileStatus {
+  draft
+  in_progress
+  submitted
+  changes_requested
+  under_review
+  active
+}
+
+enum VerificationStatus {
+  unverified
+  pending
+  verified
+  rejected
+  suspended
+}
+
+enum VendorSource {
+  ops
+  vendor_signup
+  import
+  scrape
+}
+
+model VendorProfile {
+  id                   String             @id
+  organizationId       String             @unique @map("organization_id")
+  serviceSummary       String?            @map("service_summary")
+  yearEstablished      Int?               @map("year_established")
+  employeeBand         String?            @map("employee_band")
+  hqCityId             String?            @map("hq_city_id")
+  operatingCitiesCount Int                @default(0) @map("operating_cities_count")
+  profileStatus        ProfileStatus      @default(draft) @map("profile_status")
+  verificationStatus   VerificationStatus @default(unverified) @map("verification_status")
+  verificationScore    Int?               @map("verification_score")
+  claimedAt            DateTime?          @map("claimed_at")
+  verifiedAt           DateTime?          @map("verified_at")
+  createdBySource      VendorSource       @default(ops) @map("created_by_source")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  organization      Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  hqCity            City?                     @relation("VendorHqCity", fields: [hqCityId], references: [id])
+  serviceAreas      VendorServiceArea[]
+  serviceCategories VendorServiceCategory[]
+  complianceRecords VendorComplianceRecord[]
+  documents         VendorDocument[]
+  reviews           VerificationReview[]
+  rfqRecipients     RfqRecipient[]
+  quotes            Quote[]
+  shortlistEntries  VendorShortlistSnapshot[]
+  claims            VendorClaim[]
+  evidenceItems     EvidenceItem[]
+  publicSnapshots   VendorPublicSnapshot[]
+  pageMetrics       VendorPageMetric[]
+  pricingSignals    PublicPricingSignal[]
+
+  @@index([profileStatus])
+  @@index([verificationStatus])
+  @@map("vendor_profiles")
+}
+
+model VendorServiceCategory {
+  id                String  @id
+  vendorProfileId   String  @map("vendor_profile_id")
+  serviceCategoryId String  @map("service_category_id")
+  primaryCategory   Boolean @default(false) @map("primary_category")
+  active            Boolean @default(true)
+
+  vendorProfile   VendorProfile   @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  serviceCategory ServiceCategory @relation(fields: [serviceCategoryId], references: [id], onDelete: Restrict)
+
+  @@unique([vendorProfileId, serviceCategoryId])
+  @@map("vendor_service_categories")
+}
+
+model VendorServiceArea {
+  id              String  @id
+  vendorProfileId String  @map("vendor_profile_id")
+  cityId          String  @map("city_id")
+  locality        String?
+  serviceable     Boolean @default(true)
+  notes           String?
+
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  city          City          @relation(fields: [cityId], references: [id], onDelete: Restrict)
+
+  @@unique([vendorProfileId, cityId, locality])
+  @@map("vendor_service_areas")
+}
+
+enum ComplianceType {
+  // India
+  gst
+  psara
+  epf
+  esi
+  labour_license
+  // Cross-region
+  iso
+  // United States
+  ein
+  us_state_security_license
+  workers_comp
+  // Europe
+  vat
+  eu_security_license
+  gdpr_register
+  // Catch-all
+  other
+}
+
+enum ComplianceStatus {
+  not_provided
+  pending
+  active
+  expired
+  rejected
+}
+
+enum SourceType {
+  vendor_upload
+  ops_review
+  public_source
+}
+
+model VendorComplianceRecord {
+  id               String           @id
+  vendorProfileId  String           @map("vendor_profile_id")
+  complianceType   ComplianceType   @map("compliance_type")
+  identifier       String?
+  issuingAuthority String?          @map("issuing_authority")
+  status           ComplianceStatus @default(not_provided)
+  validFrom        DateTime?        @map("valid_from")
+  validTo          DateTime?        @map("valid_to")
+  lastCheckedAt    DateTime?        @map("last_checked_at")
+  sourceType       SourceType       @default(vendor_upload) @map("source_type")
+  notes            String?
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+
+  @@index([vendorProfileId, complianceType])
+  @@map("vendor_compliance_records")
+}
+
+// -------------------------------------------------------------------------
+// Documents
+// -------------------------------------------------------------------------
+
+model DocumentFile {
+  id               String   @id
+  storageKey       String   @unique @map("storage_key")
+  fileName         String   @map("file_name")
+  mimeType         String   @map("mime_type")
+  fileSize         Int      @map("file_size")
+  uploadedByUserId String?  @map("uploaded_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  uploadedBy User?            @relation(fields: [uploadedByUserId], references: [id])
+  vendorDocs VendorDocument[]
+
+  @@map("document_files")
+}
+
+enum DocumentType {
+  gst_certificate
+  psara_license
+  epf_certificate
+  esi_certificate
+  labour_license
+  insurance
+  sample_invoice
+  reference_letter
+  other
+}
+
+enum DocumentStatus {
+  uploaded
+  in_review
+  verified
+  rejected
+}
+
+model VendorDocument {
+  id               String         @id
+  vendorProfileId  String         @map("vendor_profile_id")
+  documentFileId   String         @map("document_file_id")
+  documentType     DocumentType   @map("document_type")
+  status           DocumentStatus @default(uploaded)
+  reviewedByUserId String?        @map("reviewed_by_user_id")
+  reviewedAt       DateTime?      @map("reviewed_at")
+  notes            String?
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  documentFile  DocumentFile  @relation(fields: [documentFileId], references: [id], onDelete: Restrict)
+  reviewedBy    User?         @relation("DocReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([vendorProfileId, documentType])
+  @@map("vendor_documents")
+}
+
+// -------------------------------------------------------------------------
+// Verification workflow
+// -------------------------------------------------------------------------
+
+enum ReviewType {
+  initial
+  renewal
+  claim_review
+  exception
+}
+
+enum ReviewStatus {
+  pending
+  in_review
+  approved
+  rejected
+  needs_changes
+}
+
+model VerificationReview {
+  id                String       @id
+  vendorProfileId   String       @map("vendor_profile_id")
+  reviewType        ReviewType   @default(initial) @map("review_type")
+  status            ReviewStatus @default(pending)
+  assignedToUserId  String?      @map("assigned_to_user_id")
+  completedByUserId String?      @map("completed_by_user_id")
+  decisionNotes     String?      @map("decision_notes")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+  completedAt       DateTime?    @map("completed_at")
+
+  vendorProfile VendorProfile            @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  assignedTo    User?                    @relation("ReviewAssignee", fields: [assignedToUserId], references: [id])
+  completedBy   User?                    @relation("ReviewCompleter", fields: [completedByUserId], references: [id])
+  reviewItems   VerificationReviewItem[]
+
+  @@index([status])
+  @@map("verification_reviews")
+}
+
+model VerificationChecklistItem {
+  id                String  @id
+  serviceCategoryId String  @map("service_category_id")
+  /// Null = applies to all regions. Otherwise the item is only seeded
+  /// into a review when the vendor's region matches.
+  region            Region?
+  code              String
+  label             String
+  description       String?
+  required          Boolean @default(true)
+  sortOrder         Int     @default(0) @map("sort_order")
+  active            Boolean @default(true)
+
+  serviceCategory ServiceCategory          @relation(fields: [serviceCategoryId], references: [id], onDelete: Cascade)
+  reviewItems     VerificationReviewItem[]
+
+  @@unique([serviceCategoryId, code])
+  @@map("verification_checklist_items")
+}
+
+enum ChecklistItemStatus {
+  pending
+  pass
+  fail
+  not_applicable
+}
+
+model VerificationReviewItem {
+  id                   String              @id
+  verificationReviewId String              @map("verification_review_id")
+  checklistItemId      String              @map("checklist_item_id")
+  status               ChecklistItemStatus @default(pending)
+  notes                String?
+  reviewedByUserId     String?             @map("reviewed_by_user_id")
+  reviewedAt           DateTime?           @map("reviewed_at")
+
+  review        VerificationReview        @relation(fields: [verificationReviewId], references: [id], onDelete: Cascade)
+  checklistItem VerificationChecklistItem @relation(fields: [checklistItemId], references: [id], onDelete: Restrict)
+  reviewedBy    User?                     @relation(fields: [reviewedByUserId], references: [id])
+
+  @@unique([verificationReviewId, checklistItemId])
+  @@map("verification_review_items")
+}
+
+// -------------------------------------------------------------------------
+// Buyer requirements, RFQs, quotes
+// -------------------------------------------------------------------------
+
+enum RequirementStatus {
+  draft
+  active
+  closed
+  cancelled
+}
+
+model BuyerRequirement {
+  id                         String            @id
+  buyerOrganizationId        String            @map("buyer_organization_id")
+  region                     Region            @default(IN)
+  title                      String
+  serviceCategoryId          String            @map("service_category_id")
+  cityId                     String            @map("city_id")
+  siteType                   String?           @map("site_type")
+  headcountRequired          Int?              @map("headcount_required")
+  shiftPattern               String?           @map("shift_pattern")
+  reliefRequired             Boolean           @default(false) @map("relief_required")
+  contractTermMonths         Int?              @map("contract_term_months")
+  startDate                  DateTime?         @map("start_date")
+  complianceRequirementsJson Json?             @map("compliance_requirements_json")
+  specialRequirementsJson    Json?             @map("special_requirements_json")
+  status                     RequirementStatus @default(draft)
+  createdByUserId            String            @map("created_by_user_id")
+  createdAt                  DateTime          @default(now()) @map("created_at")
+  updatedAt                  DateTime          @updatedAt @map("updated_at")
+
+  buyerOrganization Organization              @relation(fields: [buyerOrganizationId], references: [id], onDelete: Restrict)
+  serviceCategory   ServiceCategory           @relation(fields: [serviceCategoryId], references: [id], onDelete: Restrict)
+  city              City                      @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  createdBy         User                      @relation("RequirementCreator", fields: [createdByUserId], references: [id])
+  rfqs              Rfq[]
+  shortlistEntries  VendorShortlistSnapshot[]
+
+  @@index([buyerOrganizationId, status])
+  @@index([region, status])
+  @@map("buyer_requirements")
+}
+
+enum RfqStatus {
+  draft
+  ready_to_issue
+  issued
+  collecting_quotes
+  decision_pending
+  awarded
+  closed_no_award
+  cancelled
+}
+
+model Rfq {
+  id                  String    @id
+  buyerRequirementId  String    @map("buyer_requirement_id")
+  buyerOrganizationId String    @map("buyer_organization_id")
+  rfqCode             String    @unique @map("rfq_code")
+  issueDate           DateTime? @map("issue_date")
+  responseDeadline    DateTime? @map("response_deadline")
+  status              RfqStatus @default(draft)
+  notes               String?
+  createdByUserId     String    @map("created_by_user_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  requirement       BuyerRequirement @relation(fields: [buyerRequirementId], references: [id], onDelete: Cascade)
+  buyerOrganization Organization     @relation(fields: [buyerOrganizationId], references: [id], onDelete: Restrict)
+  createdBy         User             @relation("RfqCreator", fields: [createdByUserId], references: [id])
+  recipients        RfqRecipient[]
+  quotes            Quote[]
+  decisions         RfqDecision[]
+  messages          RfqMessage[]
+
+  @@index([status])
+  @@map("rfqs")
+}
+
+enum RecipientStatus {
+  queued
+  sent
+  viewed
+  responded
+  declined
+  expired
+}
+
+model RfqRecipient {
+  id              String          @id
+  rfqId           String          @map("rfq_id")
+  vendorProfileId String          @map("vendor_profile_id")
+  recipientStatus RecipientStatus @default(queued) @map("recipient_status")
+  sentAt          DateTime?       @map("sent_at")
+  viewedAt        DateTime?       @map("viewed_at")
+  respondedAt     DateTime?       @map("responded_at")
+
+  rfq           Rfq           @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([rfqId, vendorProfileId])
+  @@index([vendorProfileId, recipientStatus])
+  @@map("rfq_recipients")
+}
+
+enum QuoteSubmissionStatus {
+  draft
+  submitted
+  withdrawn
+  superseded
+}
+
+model Quote {
+  id                 String                @id
+  rfqId              String                @map("rfq_id")
+  vendorProfileId    String                @map("vendor_profile_id")
+  versionNumber      Int                   @map("version_number")
+  currency           String                @default("INR")
+  billingUnit        String                @default("pgpm") @map("billing_unit")
+  monthlySubtotal    Decimal?              @map("monthly_subtotal") @db.Decimal(12, 2)
+  statutoryCostTotal Decimal?              @map("statutory_cost_total") @db.Decimal(12, 2)
+  serviceFeeTotal    Decimal?              @map("service_fee_total") @db.Decimal(12, 2)
+  grandTotal         Decimal?              @map("grand_total") @db.Decimal(12, 2)
+  assumptionsJson    Json?                 @map("assumptions_json")
+  validUntil         DateTime?             @map("valid_until")
+  submissionStatus   QuoteSubmissionStatus @default(draft) @map("submission_status")
+  submittedAt        DateTime?             @map("submitted_at")
+  createdByUserId    String                @map("created_by_user_id")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  rfq           Rfq             @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  vendorProfile VendorProfile   @relation(fields: [vendorProfileId], references: [id], onDelete: Restrict)
+  createdBy     User            @relation("QuoteCreator", fields: [createdByUserId], references: [id])
+  lineItems     QuoteLineItem[]
+
+  @@unique([rfqId, vendorProfileId, versionNumber])
+  @@index([rfqId])
+  @@map("quotes")
+}
+
+enum QuoteLineType {
+  guard_wage
+  supervisor_wage
+  relief_factor
+  statutory
+  admin_fee
+  equipment
+  other
+}
+
+model QuoteLineItem {
+  id        String        @id
+  quoteId   String        @map("quote_id")
+  lineType  QuoteLineType @map("line_type")
+  label     String
+  quantity  Decimal?      @db.Decimal(12, 2)
+  unit      String?
+  unitPrice Decimal?      @map("unit_price") @db.Decimal(12, 2)
+  amount    Decimal?      @db.Decimal(12, 2)
+  notes     String?
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@map("quote_line_items")
+}
+
+// -------------------------------------------------------------------------
+// Shortlist snapshots (Phase 3 prerequisite, schema-ready in Phase 1)
+// -------------------------------------------------------------------------
+
+model VendorShortlistSnapshot {
+  id                 String   @id
+  buyerRequirementId String   @map("buyer_requirement_id")
+  vendorProfileId    String   @map("vendor_profile_id")
+  matchScore         Decimal? @map("match_score") @db.Decimal(6, 4)
+  matchReasonsJson   Json?    @map("match_reasons_json")
+  excluded           Boolean  @default(false)
+  excludedReason     String?  @map("excluded_reason")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  requirement   BuyerRequirement @relation(fields: [buyerRequirementId], references: [id], onDelete: Cascade)
+  vendorProfile VendorProfile    @relation(fields: [vendorProfileId], references: [id], onDelete: Restrict)
+
+  @@unique([buyerRequirementId, vendorProfileId])
+  @@map("vendor_shortlist_snapshots")
+}
+
+// -------------------------------------------------------------------------
+// Audit
+// -------------------------------------------------------------------------
+
+model AuditEvent {
+  id                  String   @id
+  actorUserId         String?  @map("actor_user_id")
+  actorOrganizationId String?  @map("actor_organization_id")
+  entityType          String   @map("entity_type")
+  entityId            String   @map("entity_id")
+  action              String
+  beforeJson          Json?    @map("before_json")
+  afterJson           Json?    @map("after_json")
+  contextJson         Json?    @map("context_json")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  actorUser User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@map("audit_events")
+}
+
+// -------------------------------------------------------------------------
+// Phase 2 — Vendor claims & notifications
+// -------------------------------------------------------------------------
+
+enum ClaimStatus {
+  pending
+  claimed
+  expired
+  cancelled
+}
+
+model VendorClaim {
+  id              String      @id
+  vendorProfileId String      @map("vendor_profile_id")
+  claimEmail      String?     @map("claim_email")
+  claimPhone      String?     @map("claim_phone")
+  claimToken      String      @unique @map("claim_token")
+  status          ClaimStatus @default(pending)
+  claimedByUserId String?     @map("claimed_by_user_id")
+  expiresAt       DateTime    @map("expires_at")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  claimedBy     User?         @relation(fields: [claimedByUserId], references: [id])
+
+  @@index([vendorProfileId, status])
+  @@map("vendor_claims")
+}
+
+enum NotificationChannel {
+  email
+  sms
+  in_app
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+  delivered
+}
+
+model Notification {
+  id             String              @id
+  organizationId String?             @map("organization_id")
+  userId         String?             @map("user_id")
+  channel        NotificationChannel
+  templateKey    String              @map("template_key")
+  payloadJson    Json?               @map("payload_json")
+  status         NotificationStatus  @default(queued)
+  errorMessage   String?             @map("error_message")
+  sentAt         DateTime?           @map("sent_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("notifications")
+}
+
+// -------------------------------------------------------------------------
+// Phase 3 — Buyer sourcing extensions
+// -------------------------------------------------------------------------
+
+enum DecisionStatus {
+  awarded
+  closed_no_award
+  cancelled
+  reopened
+}
+
+model RfqDecision {
+  id                      String         @id
+  rfqId                   String         @map("rfq_id")
+  selectedVendorProfileId String?        @map("selected_vendor_profile_id")
+  decisionStatus          DecisionStatus @map("decision_status")
+  reasonCode              String?        @map("reason_code")
+  decisionNotes           String?        @map("decision_notes")
+  decidedByUserId         String         @map("decided_by_user_id")
+  decidedAt               DateTime       @default(now()) @map("decided_at")
+
+  rfq Rfq @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+
+  @@index([rfqId])
+  @@map("rfq_decisions")
+}
+
+enum MessageType {
+  comment
+  clarification
+  system_update
+  deadline_reminder
+}
+
+enum MessageVisibility {
+  internal
+  buyer_vendor
+  system
+}
+
+model RfqMessage {
+  id           String            @id
+  rfqId        String            @map("rfq_id")
+  senderUserId String?           @map("sender_user_id")
+  senderOrgId  String?           @map("sender_org_id")
+  messageType  MessageType       @default(comment) @map("message_type")
+  body         String
+  visibility   MessageVisibility @default(internal)
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  rfq Rfq @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+
+  @@index([rfqId, createdAt])
+  @@map("rfq_messages")
+}
+
+// -------------------------------------------------------------------------
+// Phase 4 — AI task logging, citations, and evals
+// -------------------------------------------------------------------------
+
+enum AiTaskType {
+  requirement_parse
+  shortlist_rationale
+  quote_explanation
+  ops_summary
+}
+
+enum AiTaskStatus {
+  queued
+  running
+  completed
+  failed
+  rejected
+}
+
+model AiTask {
+  id                String       @id
+  taskType          AiTaskType   @map("task_type")
+  status            AiTaskStatus @default(queued)
+  modelName         String       @map("model_name")
+  inputHash         String?      @map("input_hash")
+  inputJson         Json         @map("input_json")
+  outputJson        Json?        @map("output_json")
+  errorMessage      String?      @map("error_message")
+  requestedByUserId String?      @map("requested_by_user_id")
+  entityType        String?      @map("entity_type")
+  entityId          String?      @map("entity_id")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  completedAt       DateTime?    @map("completed_at")
+
+  citations AiTaskCitation[]
+
+  @@index([taskType, status])
+  @@index([entityType, entityId])
+  @@map("ai_tasks")
+}
+
+enum AiCitationSourceType {
+  requirement
+  vendor_profile
+  compliance_record
+  quote
+  quote_line_item
+  shortlist_snapshot
+}
+
+model AiTaskCitation {
+  id          String               @id
+  aiTaskId    String               @map("ai_task_id")
+  sourceType  AiCitationSourceType @map("source_type")
+  sourceId    String               @map("source_id")
+  fieldPath   String?              @map("field_path")
+  excerptText String?              @map("excerpt_text")
+
+  aiTask AiTask @relation(fields: [aiTaskId], references: [id], onDelete: Cascade)
+
+  @@index([aiTaskId])
+  @@map("ai_task_citations")
+}
+
+model AiEvaluation {
+  id                 String     @id
+  taskType           AiTaskType @map("task_type")
+  datasetName        String     @map("dataset_name")
+  modelName          String     @map("model_name")
+  inputJson          Json       @map("input_json")
+  expectedOutputJson Json       @map("expected_output_json")
+  actualOutputJson   Json?      @map("actual_output_json")
+  score              Decimal?   @db.Decimal(5, 4)
+  notes              String?
+  createdAt          DateTime   @default(now()) @map("created_at")
+
+  @@index([taskType, datasetName])
+  @@map("ai_evaluations")
+}
+
+// -------------------------------------------------------------------------
+// Phase 5 — Scraped ingestion & public vendor pages
+// -------------------------------------------------------------------------
+
+enum SourceUrlType {
+  vendor_site
+  directory
+  listing
+  social_profile
+  government_record
+  other
+}
+
+enum DiscoveryMethod {
+  manual
+  search
+  import
+}
+
+enum SourceUrlStatus {
+  queued
+  active
+  blocked
+  failed
+  archived
+}
+
+model SourceUrl {
+  id              String          @id
+  url             String          @unique
+  domain          String
+  sourceType      SourceUrlType   @map("source_type")
+  discoveryMethod DiscoveryMethod @map("discovery_method")
+  status          SourceUrlStatus @default(queued)
+  lastCrawledAt   DateTime?       @map("last_crawled_at")
+  nextCrawlAt     DateTime?       @map("next_crawl_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  crawls CrawlRun[]
+
+  @@index([domain])
+  @@index([status, nextCrawlAt])
+  @@map("source_urls")
+}
+
+enum CrawlStatus {
+  queued
+  running
+  completed
+  failed
+}
+
+model CrawlRun {
+  id                String      @id
+  sourceUrlId       String      @map("source_url_id")
+  status            CrawlStatus @default(queued)
+  httpStatus        Int?        @map("http_status")
+  contentHash       String?     @map("content_hash")
+  fetchedAt         DateTime?   @map("fetched_at")
+  errorMessage      String?     @map("error_message")
+  rawTextStorageKey String?     @map("raw_text_storage_key")
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  sourceUrl     SourceUrl                  @relation(fields: [sourceUrlId], references: [id], onDelete: Cascade)
+  candidates    ExtractedVendorCandidate[]
+  evidenceItems EvidenceItem[]
+
+  @@index([sourceUrlId, status])
+  @@map("crawl_runs")
+}
+
+enum CandidateStatus {
+  pending_match
+  matched
+  created_stub
+  rejected
+}
+
+model ExtractedVendorCandidate {
+  id                      String          @id
+  crawlRunId              String          @map("crawl_run_id")
+  legalName               String?         @map("legal_name")
+  displayName             String?         @map("display_name")
+  website                 String?
+  phone                   String?
+  email                   String?
+  cityText                String?         @map("city_text")
+  categoryText            String?         @map("category_text")
+  serviceSummary          String?         @map("service_summary")
+  extractionConfidence    Decimal?        @map("extraction_confidence") @db.Decimal(4, 3)
+  status                  CandidateStatus @default(pending_match)
+  resolvedVendorProfileId String?         @map("resolved_vendor_profile_id")
+  createdAt               DateTime        @default(now()) @map("created_at")
+
+  crawlRun      CrawlRun       @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  dedupeReviews DedupeReview[]
+
+  @@index([status])
+  @@map("extracted_vendor_candidates")
+}
+
+enum EvidenceType {
+  explicit
+  inferred
+}
+
+model EvidenceItem {
+  id              String       @id
+  vendorProfileId String       @map("vendor_profile_id")
+  sourceUrlId     String?      @map("source_url_id")
+  crawlRunId      String?      @map("crawl_run_id")
+  fieldName       String       @map("field_name")
+  rawValue        String?      @map("raw_value")
+  normalizedValue String?      @map("normalized_value")
+  sourceExcerpt   String?      @map("source_excerpt")
+  evidenceType    EvidenceType @default(explicit) @map("evidence_type")
+  confidenceScore Decimal?     @map("confidence_score") @db.Decimal(4, 3)
+  freshnessScore  Decimal?     @map("freshness_score") @db.Decimal(4, 3)
+  observedAt      DateTime     @map("observed_at")
+  expiresAt       DateTime?    @map("expires_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  crawlRun      CrawlRun?     @relation(fields: [crawlRunId], references: [id], onDelete: SetNull)
+
+  @@index([vendorProfileId, fieldName])
+  @@map("evidence_items")
+}
+
+enum PublicStatus {
+  draft
+  published
+  suppressed
+}
+
+model VendorPublicSnapshot {
+  id              String       @id
+  vendorProfileId String       @map("vendor_profile_id")
+  slug            String       @unique
+  pageTitle       String       @map("page_title")
+  metaDescription String?      @map("meta_description")
+  summaryJson     Json         @map("summary_json")
+  publicStatus    PublicStatus @default(draft) @map("public_status")
+  claimCtaVariant String?      @map("claim_cta_variant")
+  lastPublishedAt DateTime?    @map("last_published_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  vendorProfile VendorProfile      @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  pageMetrics   VendorPageMetric[]
+
+  @@index([publicStatus, lastPublishedAt])
+  @@map("vendor_public_snapshots")
+}
+
+model VendorPageMetric {
+  id              String   @id
+  vendorProfileId String   @map("vendor_profile_id")
+  snapshotId      String   @map("snapshot_id")
+  metricDate      DateTime @map("metric_date") @db.Date
+  pageViews       Int      @default(0) @map("page_views")
+  claimClicks     Int      @default(0) @map("claim_clicks")
+  claimStarts     Int      @default(0) @map("claim_starts")
+  claimsCompleted Int      @default(0) @map("claims_completed")
+
+  vendorProfile VendorProfile        @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  snapshot      VendorPublicSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, metricDate])
+  @@map("vendor_page_metrics")
+}
+
+enum DedupeReviewStatus {
+  pending
+  merged
+  separate
+  rejected
+}
+
+model DedupeReview {
+  id                      String             @id
+  candidateId             String             @map("candidate_id")
+  existingVendorProfileId String?            @map("existing_vendor_profile_id")
+  reviewStatus            DedupeReviewStatus @default(pending) @map("review_status")
+  reviewNotes             String?            @map("review_notes")
+  reviewedByUserId        String?            @map("reviewed_by_user_id")
+  reviewedAt              DateTime?          @map("reviewed_at")
+  createdAt               DateTime           @default(now()) @map("created_at")
+
+  candidate ExtractedVendorCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([reviewStatus])
+  @@map("dedupe_reviews")
+}
+
+// -------------------------------------------------------------------------
+// Pricing — public pricing signals gathered from the web
+// -------------------------------------------------------------------------
+//
+// Pricing is separated from generic evidence_items because it needs:
+//   - a structured enum for unit (pgpm, per_hour, per_day, package)
+//   - a normalized_pgpm_rate that makes cross-vendor comparison tractable
+//   - an ops-visible publish/reject lifecycle (service pages mislead often)
+//   - freshness that can expire a signal without deleting it
+//
+// A signal is visible on a public vendor page only when status = published.
+
+enum PricingSignalType {
+  starting_price
+  day_rate
+  night_rate
+  supervisor_rate
+  pgpm_rate
+  hourly_rate
+  daily_rate
+  range_min
+  range_max
+  package_monthly
+  other
+}
+
+enum PricingUnit {
+  per_guard_per_month
+  per_hour
+  per_day
+  per_shift
+  package_monthly
+  unspecified
+}
+
+enum PricingSignalStatus {
+  pending
+  published
+  suppressed
+  rejected
+  expired
+}
+
+model PublicPricingSignal {
+  id                 String              @id
+  vendorProfileId    String              @map("vendor_profile_id")
+  sourceUrlId        String?             @map("source_url_id")
+  crawlRunId         String?             @map("crawl_run_id")
+  signalType         PricingSignalType   @map("signal_type")
+  priceValue         Decimal             @map("price_value") @db.Decimal(12, 2)
+  currency           String              @default("INR")
+  unit               PricingUnit         @default(unspecified)
+  minQuantity        Int?                @map("min_quantity")
+  minContractMonths  Int?                @map("min_contract_months")
+  extractedText      String              @map("extracted_text")
+  normalizedPgpm     Decimal?            @map("normalized_pgpm") @db.Decimal(12, 2)
+  normalizationNotes String?             @map("normalization_notes")
+  confidence         Decimal             @db.Decimal(4, 3)
+  freshnessScore     Decimal?            @map("freshness_score") @db.Decimal(4, 3)
+  observedAt         DateTime            @map("observed_at")
+  expiresAt          DateTime?           @map("expires_at")
+  status             PricingSignalStatus @default(pending)
+  reviewedByUserId   String?             @map("reviewed_by_user_id")
+  reviewedAt         DateTime?           @map("reviewed_at")
+  reviewNotes        String?             @map("review_notes")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+
+  @@index([vendorProfileId, status])
+  @@index([status, createdAt])
+  @@map("public_pricing_signals")
+}
