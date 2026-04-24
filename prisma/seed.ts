@@ -148,27 +148,29 @@ async function main() {
     });
   }
 
-  // Region-scoped verification checklist
-  for (const [idx, item] of CHECKLIST.entries()) {
-    await prisma.verificationChecklistItem.upsert({
-      where: {
-        serviceCategoryId_code: { serviceCategoryId: security.id, code: item.code },
-      },
-      create: {
-        id: newId(),
-        serviceCategoryId: security.id,
-        code: item.code,
-        label: item.label,
-        region: item.region,
-        required: item.required ?? true,
-        sortOrder: idx,
-      },
-      update: {
-        label: item.label,
-        region: item.region,
-        sortOrder: idx,
-      },
-    });
+  // Region-scoped verification checklist (security staffing — gated)
+  if (process.env.SEED_INCLUDE_SECURITY === "1") {
+    for (const [idx, item] of CHECKLIST.entries()) {
+      await prisma.verificationChecklistItem.upsert({
+        where: {
+          serviceCategoryId_code: { serviceCategoryId: security.id, code: item.code },
+        },
+        create: {
+          id: newId(),
+          serviceCategoryId: security.id,
+          code: item.code,
+          label: item.label,
+          region: item.region,
+          required: item.required ?? true,
+          sortOrder: idx,
+        },
+        update: {
+          label: item.label,
+          region: item.region,
+          sortOrder: idx,
+        },
+      });
+    }
   }
 
   // Internal ops + admin user
@@ -275,113 +277,115 @@ async function main() {
     });
   }
 
-  // Seed vendors
-  for (const v of VENDORS) {
-    const existing = await prisma.organization.findFirst({
-      where: { legalName: v.name },
-      include: { vendorProfile: true },
-    });
-    if (existing?.vendorProfile) continue;
+  // Seed security-staffing vendors + their open verification reviews (gated)
+  if (process.env.SEED_INCLUDE_SECURITY === "1") {
+    for (const v of VENDORS) {
+      const existing = await prisma.organization.findFirst({
+        where: { legalName: v.name },
+        include: { vendorProfile: true },
+      });
+      if (existing?.vendorProfile) continue;
 
-    const org =
-      existing ??
-      (await prisma.organization.create({
+      const org =
+        existing ??
+        (await prisma.organization.create({
+          data: {
+            id: newId(),
+            type: OrganizationType.vendor,
+            legalName: v.name,
+            displayName: v.name,
+            region: v.region,
+            defaultCurrency: REGION_DEFAULT_CURRENCY[v.region],
+          },
+        }));
+
+      const hqCity = citiesByRegion[v.region][v.cityIndex ?? 0];
+      const profile = await prisma.vendorProfile.create({
         data: {
           id: newId(),
-          type: OrganizationType.vendor,
-          legalName: v.name,
-          displayName: v.name,
-          region: v.region,
-          defaultCurrency: REGION_DEFAULT_CURRENCY[v.region],
+          organizationId: org.id,
+          hqCityId: hqCity?.id,
+          profileStatus: v.profile,
+          verificationStatus: v.verification,
+          createdBySource: v.source,
+          verifiedAt: v.verification === VerificationStatus.verified ? new Date() : null,
         },
-      }));
-
-    const hqCity = citiesByRegion[v.region][v.cityIndex ?? 0];
-    const profile = await prisma.vendorProfile.create({
-      data: {
-        id: newId(),
-        organizationId: org.id,
-        hqCityId: hqCity?.id,
-        profileStatus: v.profile,
-        verificationStatus: v.verification,
-        createdBySource: v.source,
-        verifiedAt: v.verification === VerificationStatus.verified ? new Date() : null,
-      },
-    });
-    await prisma.vendorServiceCategory.create({
-      data: {
-        id: newId(),
-        vendorProfileId: profile.id,
-        serviceCategoryId: security.id,
-        primaryCategory: true,
-      },
-    });
-    if (hqCity) {
-      await prisma.vendorServiceArea.create({
-        data: { id: newId(), vendorProfileId: profile.id, cityId: hqCity.id },
       });
-    }
-
-    if (v.verification === VerificationStatus.verified) {
-      const complianceTypes: ComplianceType[] =
-        v.region === Region.IN
-          ? [ComplianceType.gst, ComplianceType.psara]
-          : v.region === Region.US
-            ? [
-                ComplianceType.ein,
-                ComplianceType.us_state_security_license,
-                ComplianceType.workers_comp,
-              ]
-            : [ComplianceType.vat, ComplianceType.eu_security_license];
-      await prisma.vendorComplianceRecord.createMany({
-        data: complianceTypes.map((ct) => ({
+      await prisma.vendorServiceCategory.create({
+        data: {
           id: newId(),
           vendorProfileId: profile.id,
-          complianceType: ct,
-          status: ComplianceStatus.active,
-        })),
-      });
-    }
-  }
-
-  // Open a region-aware review for any vendor in submitted/under_review without one.
-  const inFlight = await prisma.vendorProfile.findMany({
-    where: {
-      profileStatus: {
-        in: [ProfileStatus.submitted, ProfileStatus.under_review],
-      },
-    },
-    include: {
-      reviews: {
-        where: { status: { in: [ReviewStatus.pending, ReviewStatus.in_review] } },
-      },
-      serviceCategories: true,
-      organization: true,
-    },
-  });
-  for (const v of inFlight) {
-    if (v.reviews.length > 0) continue;
-    const review = await prisma.verificationReview.create({
-      data: { id: newId(), vendorProfileId: v.id, reviewType: ReviewType.initial },
-    });
-    const primary =
-      v.serviceCategories.find((c) => c.primaryCategory) ?? v.serviceCategories[0];
-    if (primary) {
-      const items = await prisma.verificationChecklistItem.findMany({
-        where: {
-          serviceCategoryId: primary.serviceCategoryId,
-          active: true,
-          OR: [{ region: v.organization.region }, { region: null }],
+          serviceCategoryId: security.id,
+          primaryCategory: true,
         },
       });
-      if (items.length > 0) {
-        await prisma.verificationReviewItem.createMany({
-          data: items.map((c) => ({
+      if (hqCity) {
+        await prisma.vendorServiceArea.create({
+          data: { id: newId(), vendorProfileId: profile.id, cityId: hqCity.id },
+        });
+      }
+
+      if (v.verification === VerificationStatus.verified) {
+        const complianceTypes: ComplianceType[] =
+          v.region === Region.IN
+            ? [ComplianceType.gst, ComplianceType.psara]
+            : v.region === Region.US
+              ? [
+                  ComplianceType.ein,
+                  ComplianceType.us_state_security_license,
+                  ComplianceType.workers_comp,
+                ]
+              : [ComplianceType.vat, ComplianceType.eu_security_license];
+        await prisma.vendorComplianceRecord.createMany({
+          data: complianceTypes.map((ct) => ({
             id: newId(),
-            verificationReviewId: review.id,
-            checklistItemId: c.id,
+            vendorProfileId: profile.id,
+            complianceType: ct,
+            status: ComplianceStatus.active,
           })),
         });
+      }
+    }
+
+    // Open a region-aware review for any vendor in submitted/under_review without one.
+    const inFlight = await prisma.vendorProfile.findMany({
+      where: {
+        profileStatus: {
+          in: [ProfileStatus.submitted, ProfileStatus.under_review],
+        },
+      },
+      include: {
+        reviews: {
+          where: { status: { in: [ReviewStatus.pending, ReviewStatus.in_review] } },
+        },
+        serviceCategories: true,
+        organization: true,
+      },
+    });
+    for (const v of inFlight) {
+      if (v.reviews.length > 0) continue;
+      const review = await prisma.verificationReview.create({
+        data: { id: newId(), vendorProfileId: v.id, reviewType: ReviewType.initial },
+      });
+      const primary =
+        v.serviceCategories.find((c) => c.primaryCategory) ?? v.serviceCategories[0];
+      if (primary) {
+        const items = await prisma.verificationChecklistItem.findMany({
+          where: {
+            serviceCategoryId: primary.serviceCategoryId,
+            active: true,
+            OR: [{ region: v.organization.region }, { region: null }],
+          },
+        });
+        if (items.length > 0) {
+          await prisma.verificationReviewItem.createMany({
+            data: items.map((c) => ({
+              id: newId(),
+              verificationReviewId: review.id,
+              checklistItemId: c.id,
+            })),
+          });
+        }
       }
     }
   }
