@@ -4,13 +4,14 @@ import { ProfileStatus, VerificationStatus } from "@prisma/client";
 import { prisma } from "@/server/db/client";
 import { transitionVendor } from "@/server/services/verification/transition";
 import { DomainError } from "@/lib/errors";
+import { requireRequestSession } from "@/server/auth/request-session";
+import { requireInternal } from "@/server/services/authz/guards";
 
 const BodySchema = z
   .object({
     toProfileStatus: z.nativeEnum(ProfileStatus).optional(),
     toVerificationStatus: z.nativeEnum(VerificationStatus).optional(),
     notes: z.string().max(2000).optional(),
-    actorUserId: z.string().optional(),
   })
   .refine((v) => v.toProfileStatus || v.toVerificationStatus, {
     message: "must specify at least one target status",
@@ -27,9 +28,12 @@ export async function POST(
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
   try {
+    const session = await requireRequestSession(req, prisma);
+    requireInternal(session);
     const updated = await transitionVendor(prisma, {
       vendorProfileId: id,
       ...parsed.data,
+      actorUserId: session.userId,
     });
     return NextResponse.json({
       id: updated.id,

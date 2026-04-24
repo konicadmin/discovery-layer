@@ -23,26 +23,21 @@ export interface PricingExtractor {
 }
 
 /**
- * Deterministic pricing extractor. Recognizes common rate patterns in
- * security-staffing vendor sites across India, USA, and Europe.
+ * Deterministic pricing extractor. Recognizes common public pricing patterns
+ * across B2B vendor sites in India, USA, and Europe.
  *
  * Detection order:
  *   1. Identify dominant currency symbol in the document (₹/Rs/INR, $/USD,
  *      €/EUR, £/GBP). Page without any currency marker → no signals.
- *   2. Apply region-appropriate patterns. USA conventions favor per-hour;
- *      India favors per-guard-per-month; EU is mixed.
+ *   2. Apply explicit unit patterns first (per-hour, per-day, per-user/month,
+ *      package/month), then low-confidence fallback patterns.
  *
  * Refuses to infer a rate from "contact us" / "rates on request" copy.
  */
 export class DeterministicPricingExtractor implements PricingExtractor {
   async extract(input: { url: string; text: string }): Promise<PricingCandidate[]> {
-    const raw = input.text;
-    const normalized = raw.replace(/\s+/g, " ").trim();
+    const normalized = normalizePageText(input.text);
     const lower = normalized.toLowerCase();
-
-    if (/\b(contact us|call us|request (?:a )?quote|rates? on request|get a quote)\b/.test(lower)) {
-      return [];
-    }
 
     const detected = detectCurrency(normalized);
     if (!detected) return [];
@@ -172,6 +167,88 @@ export class DeterministicPricingExtractor implements PricingExtractor {
       });
     }
 
+    // SaaS/API subscription conventions: "$20/user/month",
+    // "$20 per seat per month", "€99 / month", "$1,200 per year".
+    const perUserMonth = lower.matchAll(
+      new RegExp(
+        `${money.rawPrefix}\\s*${money.number}\\s*(?:\\/\\s*|\\s+per\\s+)(?:user|seat|member|license)\\s*(?:\\/\\s*|\\s+per\\s+)(?:month|mo)`,
+        "gi",
+      ),
+    );
+    for (const m of perUserMonth) {
+      results.push({
+        signalType: PricingSignalType.package_monthly,
+        priceValue: parseLocalizedNumber(m[1]!, decimalStyle),
+        currency,
+        region,
+        unit: PricingUnit.package_monthly,
+        minQuantity: minQty,
+        minContractMonths: minTerm,
+        extractedText: firstSentenceAround(normalized, m[0]),
+        confidence: 0.85,
+      });
+    }
+
+    const perMonth = lower.matchAll(
+      new RegExp(
+        `${money.rawPrefix}\\s*${money.number}\\s*(?:\\/\\s*(?:month|mo)|\\s+per\\s+(?:month|mo))`,
+        "gi",
+      ),
+    );
+    for (const m of perMonth) {
+      results.push({
+        signalType: PricingSignalType.package_monthly,
+        priceValue: parseLocalizedNumber(m[1]!, decimalStyle),
+        currency,
+        region,
+        unit: PricingUnit.package_monthly,
+        minQuantity: minQty,
+        minContractMonths: minTerm,
+        extractedText: firstSentenceAround(normalized, m[0]),
+        confidence: 0.8,
+      });
+    }
+
+    const perYear = lower.matchAll(
+      new RegExp(
+        `${money.rawPrefix}\\s*${money.number}\\s*(?:\\/\\s*(?:year|yr)|\\s+per\\s+(?:year|yr)|\\s+annually)`,
+        "gi",
+      ),
+    );
+    for (const m of perYear) {
+      results.push({
+        signalType: PricingSignalType.other,
+        priceValue: parseLocalizedNumber(m[1]!, decimalStyle),
+        currency,
+        region,
+        unit: PricingUnit.unspecified,
+        minQuantity: minQty,
+        minContractMonths: minTerm,
+        extractedText: firstSentenceAround(normalized, m[0]),
+        confidence: 0.7,
+      });
+    }
+
+    const genericUsage = lower.matchAll(
+      new RegExp(
+        `${money.rawPrefix}\\s*${money.number}\\s*(?:\\/\\s*|\\s+per\\s+)(?:\\d+\\s*)?(?:k|m|million|thousand)?\\s*(?:tokens?|calls?|requests?|messages?|emails?|characters?|events?|gb|gib|mb|minutes?|mins?|hosts?)`,
+        "gi",
+      ),
+    );
+    for (const m of genericUsage) {
+      results.push({
+        signalType: PricingSignalType.other,
+        priceValue: parseLocalizedNumber(m[1]!, decimalStyle),
+        currency,
+        region,
+        unit: PricingUnit.unspecified,
+        minQuantity: minQty,
+        minContractMonths: minTerm,
+        extractedText: firstSentenceAround(normalized, m[0]),
+        confidence: 0.72,
+      });
+    }
+
     // Range "$X - $Y" / "€X à €Y" / "₹X - ₹Y".
     const range = lower.match(
       new RegExp(
@@ -271,6 +348,22 @@ function inferMonthly(lower: string, context: "day" | "night"): PricingUnit {
     return PricingUnit.per_guard_per_month;
   }
   return PricingUnit.unspecified;
+}
+
+function normalizePageText(raw: string): string {
+  return raw
+    .replace(/\\u0024/g, "$")
+    .replace(/\\u20ac/gi, "€")
+    .replace(/\\u00a3/gi, "£")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#36;/g, "$")
+    .replace(/&dollar;/gi, "$")
+    .replace(/&euro;/gi, "€")
+    .replace(/&pound;/gi, "£")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function firstSentenceAround(text: string, match: string): string {

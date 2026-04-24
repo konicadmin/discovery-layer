@@ -13,9 +13,7 @@ import type { PricingExtractor } from "./pricing-extractor";
 
 /**
  * The Fetcher interface is how this phase's crawl pipeline talks to the
- * network. V1 ships only the interface; integration tests use a stub. A
- * production implementation might use Exa, ScrapingBee, or headless
- * Chromium. Keep the DB write path separate from the fetcher so tests
+ * network. Keep the DB write path separate from the fetcher so tests can
  * exercise extraction without network flakiness.
  */
 export interface Fetcher {
@@ -79,7 +77,7 @@ export async function runCrawl(
     const contentHash = createHash("sha256").update(fetchResult.text).digest("hex");
     const extracted = await args.extractor.extract({ url: source.url, text: fetchResult.text });
 
-    await tx.crawlRun.update({
+    const completedRun = await tx.crawlRun.update({
       where: { id: run.id },
       data: {
         status: CrawlStatus.completed,
@@ -95,7 +93,7 @@ export async function runCrawl(
     });
 
     if (Object.keys(extracted).length === 0) {
-      return { run, candidateId: null };
+      return { run: completedRun, candidateId: null };
     }
 
     const candidate = await tx.extractedVendorCandidate.create({
@@ -123,7 +121,7 @@ export async function runCrawl(
       after: { sourceUrlId: source.id, runId: run.id },
     });
 
-    return { run, candidateId: candidate.id };
+    return { run: completedRun, candidateId: candidate.id };
   });
 }
 
@@ -170,7 +168,7 @@ export async function crawlAndCapturePricing(
     }
 
     const contentHash = createHash("sha256").update(fetchResult.text).digest("hex");
-    await tx.crawlRun.update({
+    const completedRun = await tx.crawlRun.update({
       where: { id: run.id },
       data: {
         status: CrawlStatus.completed,
@@ -195,6 +193,6 @@ export async function crawlAndCapturePricing(
       actorUserId: args.actorUserId,
     });
 
-    return { run, created: capture.created, totalCandidates: capture.totalCandidates };
+    return { run: completedRun, created: capture.created, totalCandidates: capture.totalCandidates };
   });
 }

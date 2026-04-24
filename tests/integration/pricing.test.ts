@@ -90,6 +90,35 @@ describe("DeterministicPricingExtractor", () => {
     expect(h?.unit).toBe(PricingUnit.per_hour);
   });
 
+  it("extracts SaaS per-user monthly pricing", async () => {
+    const text = "Pro plan is $29 per user per month, billed monthly.";
+    const out = await extractor.extract({ url: "https://x.test/pricing", text });
+    const plan = out.find((c) => c.signalType === PricingSignalType.package_monthly);
+    expect(plan?.priceValue).toBe(29);
+    expect(plan?.currency).toBe("USD");
+    expect(plan?.unit).toBe(PricingUnit.package_monthly);
+  });
+
+  it("extracts EU package monthly pricing", async () => {
+    const text = "Business support starts at €99/month for small teams.";
+    const out = await extractor.extract({ url: "https://x.test/pricing", text });
+    const plan = out.find((c) => c.signalType === PricingSignalType.package_monthly);
+    expect(plan?.priceValue).toBe(99);
+    expect(plan?.currency).toBe("EUR");
+    expect(plan?.unit).toBe(PricingUnit.package_monthly);
+  });
+
+  it("extracts usage-based API pricing", async () => {
+    const text = "Input tokens cost $5.00 / 1M tokens and output tokens cost $30.00 / 1M tokens.";
+    const out = await extractor.extract({ url: "https://x.test/pricing", text });
+    expect(out.some((c) => c.priceValue === 5 && c.signalType === PricingSignalType.other)).toBe(
+      true,
+    );
+    expect(out.some((c) => c.priceValue === 30 && c.signalType === PricingSignalType.other)).toBe(
+      true,
+    );
+  });
+
   it("extracts a range", async () => {
     const text = "Our rates range from ₹20,000 to ₹25,000 depending on deployment.";
     const out = await extractor.extract({ url: "https://x.test", text });
@@ -106,6 +135,19 @@ describe("DeterministicPricingExtractor", () => {
       "Every engagement is different. Contact us for a custom quote — competitive pricing guaranteed.";
     const out = await extractor.extract({ url: "https://x.test", text });
     expect(out).toEqual([]);
+  });
+
+  it("still extracts explicit pricing when a page also says contact sales", async () => {
+    const text = "Free $0/mo. Pro $15 per month. Enterprise contact sales.";
+    const out = await extractor.extract({ url: "https://x.test/pricing", text });
+    expect(out.some((c) => c.priceValue === 15)).toBe(true);
+  });
+
+  it("normalizes common HTML pricing markup before extraction", async () => {
+    const text =
+      '<span class="dollar">$</span><span>29</span><span>per user/month</span>';
+    const out = await extractor.extract({ url: "https://x.test/pricing", text });
+    expect(out.some((c) => c.priceValue === 29)).toBe(true);
   });
 
   it("returns starting_price at low confidence when that's the only signal", async () => {
@@ -182,6 +224,26 @@ describe("capturePricingSignals + workflow", () => {
       orderBy: { createdAt: "desc" },
     });
     expect(audit?.action).toBe("pricing.published");
+  });
+
+  it("does not create duplicate signals for the same source text", async () => {
+    const prisma = getPrisma();
+    const { profile } = await makeVendor("No Duplicate Security");
+    const input = {
+      vendorProfileId: profile.id,
+      sourceUrlId: "source-1",
+      pageText: "Plan starts at $29 per user per month.",
+      pageUrl: "https://nodupe.test/pricing",
+    };
+
+    const first = await capturePricingSignals(prisma, input);
+    const second = await capturePricingSignals(prisma, input);
+
+    expect(first.created).toHaveLength(1);
+    expect(second.created).toHaveLength(0);
+    await expect(
+      prisma.publicPricingSignal.count({ where: { vendorProfileId: profile.id } }),
+    ).resolves.toBe(1);
   });
 
   it("reject requires notes", async () => {

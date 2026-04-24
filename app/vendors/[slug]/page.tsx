@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { absoluteUrl } from "@/lib/site";
 import { prisma } from "@/server/db/client";
 import { deriveTrustBand } from "@/server/services/ingestion/publish";
 
@@ -57,6 +58,14 @@ export default async function PublicVendorPage({
   const profile = snap.vendorProfile;
   const band = deriveTrustBand(profile);
   const trust = TRUST_LABELS[band] ?? TRUST_LABELS.unclaimed_public_record!;
+  const sourceIds = profile.pricingSignals
+    .map((p) => p.sourceUrlId)
+    .filter((id): id is string => Boolean(id));
+  const sources =
+    sourceIds.length > 0
+      ? await prisma.sourceUrl.findMany({ where: { id: { in: sourceIds } } })
+      : [];
+  const sourceById = new Map(sources.map((source) => [source.id, source.url]));
 
   // Best-effort page-view counter.
   const today = new Date();
@@ -77,6 +86,36 @@ export default async function PublicVendorPage({
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            name: profile.organization.displayName,
+            url: profile.organization.website ?? absoluteUrl(`/vendors/${snap.slug}`),
+            areaServed: profile.organization.region,
+            address: profile.hqCity
+              ? {
+                  "@type": "PostalAddress",
+                  addressLocality: profile.hqCity.name,
+                  addressRegion: profile.hqCity.state,
+                  addressCountry: profile.hqCity.country,
+                }
+              : undefined,
+            makesOffer: profile.pricingSignals.map((p) => ({
+              "@type": "Offer",
+              price: Number(p.priceValue),
+              priceCurrency: p.currency,
+              availability: "https://schema.org/InStock",
+              url: p.sourceUrlId
+                ? sourceById.get(p.sourceUrlId) ?? absoluteUrl(`/vendors/${snap.slug}`)
+                : absoluteUrl(`/vendors/${snap.slug}`),
+              description: p.extractedText,
+            })),
+          }),
+        }}
+      />
       <div className="max-w-3xl mx-auto px-4 py-8">
         <header className="space-y-2">
           <span className={`inline-block px-2 py-0.5 text-xs rounded ${trust.tone}`}>
@@ -105,10 +144,10 @@ export default async function PublicVendorPage({
               </span>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              These rates were extracted from the vendor&apos;s own public pages.
+              These rates were extracted from public vendor pages.
               They may exclude statutory costs, have minimum-quantity / term
-              conditions, or be out of date. Treat any normalized per-guard-per-month
-              figure as a rough comparator, not a firm quote.
+              conditions, or be out of date. Treat normalized figures as rough
+              comparators, not firm quotes.
             </p>
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 text-left">
@@ -116,8 +155,9 @@ export default async function PublicVendorPage({
                   <th className="px-2 py-1">Signal</th>
                   <th className="px-2 py-1">Rate</th>
                   <th className="px-2 py-1">Unit</th>
-                  <th className="px-2 py-1">Indicative PGPM</th>
+                  <th className="px-2 py-1">Normalized monthly</th>
                   <th className="px-2 py-1">Conditions</th>
+                  <th className="px-2 py-1">Source</th>
                   <th className="px-2 py-1">Observed</th>
                 </tr>
               </thead>
@@ -131,7 +171,7 @@ export default async function PublicVendorPage({
                     <td className="px-2 py-1 text-xs">{p.unit}</td>
                     <td className="px-2 py-1 font-mono text-sm">
                       {p.normalizedPgpm != null
-                        ? `₹${Number(p.normalizedPgpm).toLocaleString("en-IN")}`
+                        ? `${p.currency} ${Number(p.normalizedPgpm).toLocaleString("en-US")}`
                         : "—"}
                       {p.normalizationNotes && (
                         <div className="text-[11px] text-gray-500">
@@ -141,11 +181,24 @@ export default async function PublicVendorPage({
                     </td>
                     <td className="px-2 py-1 text-xs">
                       {[
-                        p.minQuantity ? `min ${p.minQuantity} guards` : null,
+                        p.minQuantity ? `min quantity ${p.minQuantity}` : null,
                         p.minContractMonths ? `${p.minContractMonths}mo term` : null,
                       ]
                         .filter(Boolean)
                         .join(" · ") || "—"}
+                    </td>
+                    <td className="px-2 py-1 text-xs">
+                      {p.sourceUrlId && sourceById.get(p.sourceUrlId) ? (
+                        <a
+                          className="underline"
+                          href={sourceById.get(p.sourceUrlId)}
+                          rel="nofollow noreferrer"
+                        >
+                          source
+                        </a>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-2 py-1 text-xs">
                       {p.observedAt.toISOString().slice(0, 10)}

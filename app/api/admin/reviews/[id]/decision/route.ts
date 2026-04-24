@@ -7,11 +7,12 @@ import {
   requestChanges,
 } from "@/server/services/verification/review";
 import { errorResponse } from "@/lib/api/handle-error";
+import { requireRequestSession } from "@/server/auth/request-session";
+import { requireInternal } from "@/server/services/authz/guards";
 
 const BodySchema = z.object({
   decision: z.enum(["approve", "reject", "request_changes"]),
   notes: z.string().max(2000).optional(),
-  actorUserId: z.string(),
 });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -21,10 +22,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
-  const { decision, notes, actorUserId } = parsed.data;
   try {
+    const session = await requireRequestSession(req, prisma);
+    requireInternal(session);
+    const { decision, notes } = parsed.data;
     if (decision === "approve") {
-      const updated = await approveReview(prisma, { reviewId: id, notes, actorUserId });
+      const updated = await approveReview(prisma, {
+        reviewId: id,
+        notes,
+        actorUserId: session.userId,
+      });
       return NextResponse.json({ id: updated.id, status: updated.status });
     }
     if (decision === "reject") {
@@ -34,7 +41,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           { status: 400 },
         );
       }
-      const updated = await rejectReview(prisma, { reviewId: id, notes, actorUserId });
+      const updated = await rejectReview(prisma, {
+        reviewId: id,
+        notes,
+        actorUserId: session.userId,
+      });
       return NextResponse.json({ id: updated.id, status: updated.status });
     }
     if (!notes) {
@@ -43,7 +54,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         { status: 400 },
       );
     }
-    const updated = await requestChanges(prisma, { reviewId: id, notes, actorUserId });
+    const updated = await requestChanges(prisma, {
+      reviewId: id,
+      notes,
+      actorUserId: session.userId,
+    });
     return NextResponse.json({ id: updated.id, status: updated.status });
   } catch (err) {
     return errorResponse(err);

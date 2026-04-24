@@ -60,6 +60,9 @@ async function world() {
         verificationStatus: VerificationStatus.verified,
       },
     });
+    await prisma.vendorServiceArea.create({
+      data: { id: newId(), vendorProfileId: p.id, cityId: city.id },
+    });
   }
   return { prisma, city, cat, buyerOrg, buyerUser, vendorUser, v1, v2 };
 }

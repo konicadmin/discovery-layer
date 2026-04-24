@@ -5,6 +5,7 @@ import {
   QuoteSubmissionStatus,
   RequirementStatus,
   RfqStatus,
+  VerificationStatus,
 } from "@prisma/client";
 import { getPrisma } from "./setup";
 import { newId } from "@/lib/id";
@@ -42,7 +43,13 @@ async function bootstrapWorld() {
   });
   await prisma.vendorProfile.update({
     where: { id: profile.id },
-    data: { profileStatus: ProfileStatus.active },
+    data: {
+      profileStatus: ProfileStatus.active,
+      verificationStatus: VerificationStatus.verified,
+    },
+  });
+  await prisma.vendorServiceArea.create({
+    data: { id: newId(), vendorProfileId: profile.id, cityId: city.id },
   });
   return { city, cat, buyerOrg, buyerUser, vendorUser, profile };
 }

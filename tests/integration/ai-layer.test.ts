@@ -166,6 +166,9 @@ describe("AI compare explanation", () => {
           verificationStatus: VerificationStatus.verified,
         },
       });
+      await prisma.vendorServiceArea.create({
+        data: { id: newId(), vendorProfileId: p.id, cityId: city.id },
+      });
     }
     const req = await createRequirement(prisma, {
       buyerOrganizationId: buyerOrg.id,

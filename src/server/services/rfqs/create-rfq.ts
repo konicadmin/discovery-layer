@@ -1,4 +1,9 @@
-import { RfqStatus, type RecipientStatus } from "@prisma/client";
+import {
+  ProfileStatus,
+  RfqStatus,
+  type RecipientStatus,
+  VerificationStatus,
+} from "@prisma/client";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";
@@ -16,6 +21,45 @@ export type CreateRfqInput = {
   notes?: string;
   createdByUserId: string;
 };
+
+function assertRecipientEligibility(args: {
+  rfqId: string;
+  vendorProfileId: string;
+  region: string;
+  serviceCategoryId: string;
+  cityId: string;
+  profileStatus: ProfileStatus;
+  verificationStatus: VerificationStatus;
+  vendorRegion: string;
+  categoryMatch: boolean;
+  cityMatch: boolean;
+}) {
+  if (args.profileStatus !== ProfileStatus.active) {
+    throw new ValidationError(
+      `vendor ${args.vendorProfileId} is not active and cannot receive RFQs`,
+    );
+  }
+  if (args.verificationStatus !== VerificationStatus.verified) {
+    throw new ValidationError(
+      `vendor ${args.vendorProfileId} must be verified before receiving RFQs`,
+    );
+  }
+  if (args.vendorRegion !== args.region) {
+    throw new ValidationError(
+      `vendor ${args.vendorProfileId} is in a different region and cannot receive RFQ ${args.rfqId}`,
+    );
+  }
+  if (!args.categoryMatch) {
+    throw new ValidationError(
+      `vendor ${args.vendorProfileId} does not serve the RFQ category`,
+    );
+  }
+  if (!args.cityMatch) {
+    throw new ValidationError(
+      `vendor ${args.vendorProfileId} does not serve the RFQ city`,
+    );
+  }
+}
 
 export async function createRfq(db: Db, input: CreateRfqInput) {
   return withTx(db, async (tx) => {
@@ -57,11 +101,41 @@ export async function addRfqRecipient(
   args: { rfqId: string; vendorProfileId: string; actorUserId: string },
 ) {
   return withTx(db, async (tx) => {
-    const rfq = await tx.rfq.findUnique({ where: { id: args.rfqId } });
+    const rfq = await tx.rfq.findUnique({
+      where: { id: args.rfqId },
+      include: { requirement: true },
+    });
     if (!rfq) throw new NotFoundError("rfq", args.rfqId);
     if (rfq.status !== RfqStatus.draft && rfq.status !== RfqStatus.ready_to_issue) {
       throw new ValidationError("recipients can only be added before issuance");
     }
+
+    const vendor = await tx.vendorProfile.findUnique({
+      where: { id: args.vendorProfileId },
+      include: {
+        organization: true,
+        serviceCategories: true,
+        serviceAreas: true,
+      },
+    });
+    if (!vendor) throw new NotFoundError("vendor_profile", args.vendorProfileId);
+
+    assertRecipientEligibility({
+      rfqId: rfq.id,
+      vendorProfileId: vendor.id,
+      region: rfq.requirement.region,
+      serviceCategoryId: rfq.requirement.serviceCategoryId,
+      cityId: rfq.requirement.cityId,
+      profileStatus: vendor.profileStatus,
+      verificationStatus: vendor.verificationStatus,
+      vendorRegion: vendor.organization.region,
+      categoryMatch: vendor.serviceCategories.some(
+        (c) => c.serviceCategoryId === rfq.requirement.serviceCategoryId && c.active,
+      ),
+      cityMatch: vendor.serviceAreas.some(
+        (a) => a.cityId === rfq.requirement.cityId && a.serviceable,
+      ),
+    });
 
     const recipient = await tx.rfqRecipient.create({
       data: {
@@ -91,7 +165,20 @@ export async function issueRfq(
   return withTx(db, async (tx) => {
     const rfq = await tx.rfq.findUnique({
       where: { id: args.rfqId },
-      include: { recipients: true },
+      include: {
+        requirement: true,
+        recipients: {
+          include: {
+            vendorProfile: {
+              include: {
+                organization: true,
+                serviceCategories: true,
+                serviceAreas: true,
+              },
+            },
+          },
+        },
+      },
     });
     if (!rfq) throw new NotFoundError("rfq", args.rfqId);
     if (rfq.recipients.length === 0) {
@@ -102,6 +189,26 @@ export async function issueRfq(
     }
     if (rfq.status !== RfqStatus.draft && rfq.status !== RfqStatus.ready_to_issue) {
       throw new ValidationError(`cannot issue an RFQ in state ${rfq.status}`);
+    }
+
+    for (const recipient of rfq.recipients) {
+      const vendor = recipient.vendorProfile;
+      assertRecipientEligibility({
+        rfqId: rfq.id,
+        vendorProfileId: vendor.id,
+        region: rfq.requirement.region,
+        serviceCategoryId: rfq.requirement.serviceCategoryId,
+        cityId: rfq.requirement.cityId,
+        profileStatus: vendor.profileStatus,
+        verificationStatus: vendor.verificationStatus,
+        vendorRegion: vendor.organization.region,
+        categoryMatch: vendor.serviceCategories.some(
+          (c) => c.serviceCategoryId === rfq.requirement.serviceCategoryId && c.active,
+        ),
+        cityMatch: vendor.serviceAreas.some(
+          (a) => a.cityId === rfq.requirement.cityId && a.serviceable,
+        ),
+      });
     }
 
     const now = new Date();

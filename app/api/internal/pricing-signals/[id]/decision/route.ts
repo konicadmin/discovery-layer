@@ -6,11 +6,12 @@ import {
   rejectPricingSignal,
 } from "@/server/services/ingestion/pricing";
 import { errorResponse } from "@/lib/api/handle-error";
+import { requireRequestSession } from "@/server/auth/request-session";
+import { requireInternal } from "@/server/services/authz/guards";
 
 const BodySchema = z.object({
   decision: z.enum(["publish", "reject"]),
   notes: z.string().max(2000).optional(),
-  actorUserId: z.string(),
 });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -21,10 +22,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
   try {
+    const session = await requireRequestSession(req, prisma);
+    requireInternal(session);
     if (parsed.data.decision === "publish") {
       const updated = await publishPricingSignal(prisma, {
         signalId: id,
-        actorUserId: parsed.data.actorUserId,
+        actorUserId: session.userId,
         notes: parsed.data.notes,
       });
       return NextResponse.json({ id: updated.id, status: updated.status });
@@ -37,7 +40,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
     const updated = await rejectPricingSignal(prisma, {
       signalId: id,
-      actorUserId: parsed.data.actorUserId,
+      actorUserId: session.userId,
       notes: parsed.data.notes,
     });
     return NextResponse.json({ id: updated.id, status: updated.status });

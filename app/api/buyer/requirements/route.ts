@@ -4,6 +4,8 @@ import { Region } from "@prisma/client";
 import { prisma } from "@/server/db/client";
 import { createRequirement } from "@/server/services/requirements/create-requirement";
 import { errorResponse } from "@/lib/api/handle-error";
+import { requireRequestSession } from "@/server/auth/request-session";
+import { requireBuyerAccess } from "@/server/services/authz/guards";
 
 const BodySchema = z.object({
   buyerOrganizationId: z.string(),
@@ -19,7 +21,6 @@ const BodySchema = z.object({
   startDate: z.string().datetime().optional(),
   complianceRequirements: z.any().optional(),
   specialRequirements: z.any().optional(),
-  createdByUserId: z.string(),
 });
 
 export async function GET(req: Request) {
@@ -41,11 +42,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
   try {
-    const req = await createRequirement(prisma, {
+    const session = await requireRequestSession(req, prisma);
+    requireBuyerAccess(session, parsed.data.buyerOrganizationId);
+    const requirement = await createRequirement(prisma, {
       ...parsed.data,
+      createdByUserId: session.userId,
       startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : undefined,
     });
-    return NextResponse.json({ id: req.id, status: req.status }, { status: 201 });
+    return NextResponse.json(
+      { id: requirement.id, status: requirement.status },
+      { status: 201 },
+    );
   } catch (err) {
     return errorResponse(err);
   }

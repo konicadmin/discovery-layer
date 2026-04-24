@@ -4,11 +4,12 @@ import { ChecklistItemStatus } from "@prisma/client";
 import { prisma } from "@/server/db/client";
 import { setChecklistItem } from "@/server/services/verification/review";
 import { errorResponse } from "@/lib/api/handle-error";
+import { requireRequestSession } from "@/server/auth/request-session";
+import { requireInternal } from "@/server/services/authz/guards";
 
 const BodySchema = z.object({
   status: z.nativeEnum(ChecklistItemStatus),
   notes: z.string().max(2000).optional(),
-  actorUserId: z.string(),
 });
 
 export async function PATCH(
@@ -22,10 +23,14 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
   try {
+    const session = await requireRequestSession(req, prisma);
+    requireInternal(session);
     const updated = await setChecklistItem(prisma, {
       reviewId: id,
       checklistItemId: itemId,
-      ...parsed.data,
+      status: parsed.data.status,
+      notes: parsed.data.notes,
+      actorUserId: session.userId,
     });
     return NextResponse.json({
       id: updated.id,

@@ -101,6 +101,17 @@ export async function capturePricingSignals(db: Db, input: CapturePricingInput) 
 
     for (const cand of candidates) {
       const norm = normalizeToPGPM(cand);
+      const existing = await tx.publicPricingSignal.findFirst({
+        where: {
+          vendorProfileId: input.vendorProfileId,
+          sourceUrlId: input.sourceUrlId ?? null,
+          signalType: cand.signalType,
+          priceValue: cand.priceValue.toString(),
+          currency: cand.currency,
+          unit: cand.unit,
+        },
+      });
+      if (existing) continue;
       const row = await tx.publicPricingSignal.create({
         data: {
           id: newId(),
@@ -132,13 +143,15 @@ export async function capturePricingSignals(db: Db, input: CapturePricingInput) 
       });
     }
 
-    await logEvent(tx, {
-      actorUserId: input.actorUserId,
-      entityType: "vendor_profile",
-      entityId: input.vendorProfileId,
-      action: "pricing.captured",
-      after: { count: created.length, sourceUrlId: input.sourceUrlId ?? null },
-    });
+    if (created.length > 0) {
+      await logEvent(tx, {
+        actorUserId: input.actorUserId,
+        entityType: "vendor_profile",
+        entityId: input.vendorProfileId,
+        action: "pricing.captured",
+        after: { count: created.length, sourceUrlId: input.sourceUrlId ?? null },
+      });
+    }
 
     return { created, totalCandidates: candidates.length };
   });

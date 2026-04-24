@@ -1,7 +1,10 @@
 import {
+  ProfileStatus,
   type Prisma,
   type PrismaClient,
   QuoteSubmissionStatus,
+  RfqStatus,
+  VerificationStatus,
 } from "@prisma/client";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { newId } from "@/lib/id";
@@ -40,9 +43,33 @@ export async function createQuote(db: PrismaClient, input: CreateQuoteInput) {
       where: {
         rfqId_vendorProfileId: { rfqId: input.rfqId, vendorProfileId: input.vendorProfileId },
       },
+      include: {
+        rfq: true,
+        vendorProfile: true,
+      },
     });
     if (!recipient) {
       throw new ValidationError("vendor was not invited to this RFQ");
+    }
+    if (recipient.rfq.status !== RfqStatus.collecting_quotes) {
+      throw new ValidationError(
+        `cannot create a quote while RFQ is in state ${recipient.rfq.status}`,
+      );
+    }
+    if (
+      recipient.rfq.responseDeadline &&
+      recipient.rfq.responseDeadline.getTime() <= Date.now()
+    ) {
+      throw new ValidationError("RFQ response deadline has passed");
+    }
+    if (recipient.recipientStatus === "declined" || recipient.recipientStatus === "expired") {
+      throw new ValidationError("vendor can no longer respond to this RFQ");
+    }
+    if (recipient.vendorProfile.profileStatus !== ProfileStatus.active) {
+      throw new ValidationError("inactive vendor cannot submit quotes");
+    }
+    if (recipient.vendorProfile.verificationStatus !== VerificationStatus.verified) {
+      throw new ValidationError("unverified vendor cannot submit quotes");
     }
 
     const last = await tx.quote.findFirst({
@@ -103,12 +130,45 @@ export async function submitQuote(
   args: { quoteId: string; actorUserId: string },
 ) {
   return db.$transaction(async (tx) => {
-    const quote = await tx.quote.findUnique({ where: { id: args.quoteId } });
+    const quote = await tx.quote.findUnique({
+      where: { id: args.quoteId },
+      include: { rfq: true, vendorProfile: true },
+    });
     if (!quote) throw new NotFoundError("quote", args.quoteId);
     if (quote.submissionStatus !== QuoteSubmissionStatus.draft) {
       throw new ValidationError(
         `cannot submit a quote in state ${quote.submissionStatus}; create a new version`,
       );
+    }
+
+    if (quote.rfq.status !== RfqStatus.collecting_quotes) {
+      throw new ValidationError(
+        `cannot submit a quote while RFQ is in state ${quote.rfq.status}`,
+      );
+    }
+    if (quote.rfq.responseDeadline && quote.rfq.responseDeadline.getTime() <= Date.now()) {
+      throw new ValidationError("RFQ response deadline has passed");
+    }
+    if (quote.vendorProfile.profileStatus !== ProfileStatus.active) {
+      throw new ValidationError("inactive vendor cannot submit quotes");
+    }
+    if (quote.vendorProfile.verificationStatus !== VerificationStatus.verified) {
+      throw new ValidationError("unverified vendor cannot submit quotes");
+    }
+
+    const recipient = await tx.rfqRecipient.findUnique({
+      where: {
+        rfqId_vendorProfileId: {
+          rfqId: quote.rfqId,
+          vendorProfileId: quote.vendorProfileId,
+        },
+      },
+    });
+    if (!recipient) {
+      throw new ValidationError("vendor is no longer an RFQ recipient");
+    }
+    if (recipient.recipientStatus === "declined" || recipient.recipientStatus === "expired") {
+      throw new ValidationError("vendor can no longer respond to this RFQ");
     }
 
     // Mark earlier submitted versions for the same (rfq, vendor) as superseded.

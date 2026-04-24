@@ -6,6 +6,9 @@ import {
   readShortlist,
 } from "@/server/services/shortlisting/shortlist";
 import { errorResponse } from "@/lib/api/handle-error";
+import { NotFoundError } from "@/lib/errors";
+import { requireRequestSession } from "@/server/auth/request-session";
+import { requireBuyerAccess } from "@/server/services/authz/guards";
 
 const PostBodySchema = z.object({
   topN: z.number().int().min(1).max(50).optional(),
@@ -19,7 +22,6 @@ const PostBodySchema = z.object({
       recency: z.number().min(0).max(1).optional(),
     })
     .optional(),
-  actorUserId: z.string().optional(),
 });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -30,7 +32,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
   }
   try {
-    const result = await generateShortlist(prisma, id, parsed.data);
+    const session = await requireRequestSession(req, prisma);
+    const requirement = await prisma.buyerRequirement.findUnique({
+      where: { id },
+      select: { buyerOrganizationId: true },
+    });
+    if (!requirement) throw new NotFoundError("buyer_requirement", id);
+    requireBuyerAccess(session, requirement.buyerOrganizationId);
+
+    const result = await generateShortlist(prisma, id, {
+      ...parsed.data,
+      actorUserId: session.userId,
+    });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     return errorResponse(err);
@@ -40,6 +53,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   try {
+    const session = await requireRequestSession(req, prisma);
+    const requirement = await prisma.buyerRequirement.findUnique({
+      where: { id },
+      select: { buyerOrganizationId: true },
+    });
+    if (!requirement) throw new NotFoundError("buyer_requirement", id);
+    requireBuyerAccess(session, requirement.buyerOrganizationId);
+
     const snapshots = await readShortlist(prisma, id);
     return NextResponse.json({
       items: snapshots.map((s) => ({

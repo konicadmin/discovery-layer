@@ -28,6 +28,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ slug: string }
   }
   const profile = snap.vendorProfile;
   const trustBand = deriveTrustBand(profile);
+  const sourceIds = profile.pricingSignals
+    .map((p) => p.sourceUrlId)
+    .filter((id): id is string => Boolean(id));
+  const sources =
+    sourceIds.length > 0
+      ? await prisma.sourceUrl.findMany({ where: { id: { in: sourceIds } } })
+      : [];
+  const sourceById = new Map(sources.map((source) => [source.id, source.url]));
   return NextResponse.json({
     slug: snap.slug,
     trustBand,
@@ -59,6 +67,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ slug: string }
       minQuantity: p.minQuantity,
       minContractMonths: p.minContractMonths,
       extractedText: p.extractedText,
+      sourceUrl: p.sourceUrlId ? sourceById.get(p.sourceUrlId) ?? null : null,
       observedAt: p.observedAt,
       expiresAt: p.expiresAt,
     })),
