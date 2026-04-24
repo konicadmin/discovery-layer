@@ -44,4 +44,17 @@ describe("SaaS per-seat/month extractor", () => {
     });
     expect(result.find((r) => r.unit === "per_seat_per_month")).toBeUndefined();
   });
+
+  it("does not suppress later-tier prices after an earlier 'Contact sales' line", async () => {
+    const result = await extractor.extract({
+      url: "https://example.com/pricing",
+      text:
+        "Enterprise: Contact sales for custom pricing. " +
+        "Starter: $10 per user per month. " +
+        "Team: $20 per user per month.",
+    });
+    const seats = result.filter((r) => r.unit === "per_seat_per_month");
+    const amounts = seats.map((s) => s.priceValue).sort((a, b) => a - b);
+    expect(amounts).toEqual([10, 20]);
+  });
 });

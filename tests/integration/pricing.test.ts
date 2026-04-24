@@ -97,7 +97,7 @@ describe("DeterministicPricingExtractor", () => {
     expect(plan?.priceValue).toBe(29);
     expect(plan?.currency).toBe("USD");
     expect(plan?.unit).toBe(PricingUnit.per_seat_per_month);
-    expect(plan?.signalType).toBe(PricingSignalType.package_monthly);
+    expect(plan?.signalType).toBe(PricingSignalType.starting_price);
   });
 
   it("extracts EU package monthly pricing", async () => {
