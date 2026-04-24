@@ -58,3 +58,28 @@ describe("SaaS per-seat/month extractor", () => {
     expect(amounts).toEqual([10, 20]);
   });
 });
+
+describe("AI token pricing extractor", () => {
+  const extractor = new DeterministicPricingExtractor();
+
+  it("extracts '$3.00 per million input tokens' as per_1m_input_tokens", async () => {
+    const result = await extractor.extract({
+      url: "https://docs.anthropic.com/pricing",
+      text: "Claude Sonnet 4.6: $3.00 per million input tokens, $15.00 per million output tokens.",
+    });
+    const inTok = result.find((r) => r.unit === "per_1m_input_tokens");
+    const outTok = result.find((r) => r.unit === "per_1m_output_tokens");
+    expect(inTok?.priceValue).toBe(3.0);
+    expect(outTok?.priceValue).toBe(15.0);
+  });
+
+  it("extracts '$0.002 / 1K tokens' as per_1k_tokens", async () => {
+    const result = await extractor.extract({
+      url: "https://openai.com/api/pricing/",
+      text: "gpt-4o-mini: $0.002 / 1K tokens input, $0.008 / 1K tokens output.",
+    });
+    const inTok = result.find((r) => r.unit === "per_1k_tokens");
+    expect(inTok).toBeDefined();
+    expect(inTok!.priceValue).toBe(0.002);
+  });
+});

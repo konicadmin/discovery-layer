@@ -39,6 +39,103 @@ const CURRENCY_BY_SYMBOL: Record<string, string> = {
   "₹": "INR",
 };
 
+/**
+ * AI token pricing patterns (per-1M and per-1K tokens).
+ *
+ * Matches shapes like:
+ *   - "$3.00 per million input tokens"
+ *   - "$15 / 1M output tokens"
+ *   - "$0.002 / 1K tokens"
+ *   - "€2.50 per 1M tokens"
+ *
+ * The optional trailing `dir` group looks for "input"/"prompt"/"output"/
+ * "completion" within ~40 chars AFTER the price+unit phrase, to classify
+ * the signal. When the direction is ambiguous we assume input (the
+ * convention for a single headline price on AI vendor pages).
+ */
+// The direction ("input" | "output" | "prompt" | "completion") may appear
+// either BEFORE `tokens` ("per million input tokens") or AFTER it
+// ("/ 1K tokens input"); both idioms are common on AI vendor pages. The
+// `dirPre` and `dirPost` groups capture each form independently so the
+// `g`-flag iterator doesn't swallow a neighboring price into one match.
+const TOKENS_1M_RE = new RegExp(
+  [
+    "(?<symbol>[\\$€£₹])\\s*(?<amount>\\d[\\d,.]*)",
+    "\\s*(?:/|per)\\s*(?:1\\s*m|1\\s*million|million|M)",
+    "\\s*(?<dirPre>input|prompt|output|completion)?",
+    "\\s*(?:tokens?|tok)",
+    "(?<dirPost>[^\\n]{0,20}?(?:input|prompt|output|completion))?",
+  ].join(""),
+  "gi",
+);
+
+const TOKENS_1K_RE = new RegExp(
+  [
+    "(?<symbol>[\\$€£₹])\\s*(?<amount>\\d[\\d,.]*)",
+    "\\s*(?:/|per)\\s*(?:1\\s*k|1\\s*thousand|thousand|K)",
+    "\\s*(?<dirPre>input|prompt|output|completion)?",
+    "\\s*(?:tokens?|tok)",
+    "(?<dirPost>[^\\n]{0,20}?(?:input|prompt|output|completion))?",
+  ].join(""),
+  "gi",
+);
+
+function dirToUnit(dir: string | undefined, perK: boolean): PricingUnit {
+  if (perK) return PricingUnit.per_1k_tokens;
+  if (!dir) return PricingUnit.per_1m_input_tokens; // ambiguous → assume input
+  const s = dir.toLowerCase();
+  if (s.includes("output") || s.includes("completion")) {
+    return PricingUnit.per_1m_output_tokens;
+  }
+  return PricingUnit.per_1m_input_tokens;
+}
+
+export function extractTokenPricing(text: string): PricingCandidate[] {
+  const out: PricingCandidate[] = [];
+  const seen = new Set<string>();
+  for (const m of text.matchAll(TOKENS_1M_RE)) {
+    const symbol = m.groups?.symbol ?? "";
+    const amount = parseLocalizedNumber(m.groups?.amount ?? "", "dot");
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const currency = CURRENCY_BY_SYMBOL[symbol] ?? "USD";
+    const dir = m.groups?.dirPre ?? m.groups?.dirPost;
+    const unit = dirToUnit(dir, false);
+    const key = `${unit}:${currency}:${amount}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      signalType: PricingSignalType.starting_price,
+      priceValue: amount,
+      currency,
+      region: null,
+      unit,
+      extractedText: m[0],
+      confidence: 0.85,
+    });
+  }
+  for (const m of text.matchAll(TOKENS_1K_RE)) {
+    const symbol = m.groups?.symbol ?? "";
+    const amount = parseLocalizedNumber(m.groups?.amount ?? "", "dot");
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const currency = CURRENCY_BY_SYMBOL[symbol] ?? "USD";
+    const dir = m.groups?.dirPre ?? m.groups?.dirPost;
+    const unit = dirToUnit(dir, true);
+    const key = `${unit}:${currency}:${amount}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      signalType: PricingSignalType.starting_price,
+      priceValue: amount,
+      currency,
+      region: null,
+      unit,
+      extractedText: m[0],
+      confidence: 0.85,
+    });
+  }
+  return out;
+}
+
 export function extractSaasSeatMonth(text: string): PricingCandidate[] {
   const out: PricingCandidate[] = [];
   const seen = new Set<string>();
