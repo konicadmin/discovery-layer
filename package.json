@@ -43,5 +43,13 @@
     "typescript": "5.6.3",
     "vitest": "1.6.0"
   },
-  "packageManager": "pnpm@9.12.0"
+  "packageManager": "pnpm@9.12.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "prisma",
+      "argon2",
+      "@prisma/engines"
+    ]
+  }
 }
