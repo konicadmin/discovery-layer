@@ -93,10 +93,11 @@ describe("DeterministicPricingExtractor", () => {
   it("extracts SaaS per-user monthly pricing", async () => {
     const text = "Pro plan is $29 per user per month, billed monthly.";
     const out = await extractor.extract({ url: "https://x.test/pricing", text });
-    const plan = out.find((c) => c.signalType === PricingSignalType.package_monthly);
+    const plan = out.find((c) => c.unit === PricingUnit.per_seat_per_month);
     expect(plan?.priceValue).toBe(29);
     expect(plan?.currency).toBe("USD");
-    expect(plan?.unit).toBe(PricingUnit.package_monthly);
+    expect(plan?.unit).toBe(PricingUnit.per_seat_per_month);
+    expect(plan?.signalType).toBe(PricingSignalType.package_monthly);
   });
 
   it("extracts EU package monthly pricing", async () => {
