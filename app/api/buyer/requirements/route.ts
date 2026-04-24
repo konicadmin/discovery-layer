@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { Region } from "@prisma/client";
+import { Region } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 import { createRequirement } from "@/server/services/requirements/create-requirement";
 import { errorResponse } from "@/lib/api/handle-error";

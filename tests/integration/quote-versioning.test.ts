@@ -6,7 +6,7 @@ import {
   RequirementStatus,
   RfqStatus,
   VerificationStatus,
-} from "@prisma/client";
+} from "@/generated/prisma";
 import { getPrisma } from "./setup";
 import { newId } from "@/lib/id";
 import { createVendor } from "@/server/services/vendors/create-vendor";

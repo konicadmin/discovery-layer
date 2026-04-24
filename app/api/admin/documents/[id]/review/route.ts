@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { DocumentStatus } from "@prisma/client";
+import { DocumentStatus } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 import { reviewDocument } from "@/server/services/verification/review";
 import { errorResponse } from "@/lib/api/handle-error";

@@ -1,4 +1,4 @@
-import { PricingSignalType, PricingUnit, Region } from "@prisma/client";
+import { PricingSignalType, PricingUnit, Region } from "@/generated/prisma";
 import {
   CURRENCY_SYMBOLS,
   detectCurrency,

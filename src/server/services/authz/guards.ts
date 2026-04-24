@@ -1,4 +1,4 @@
-import { MembershipRole } from "@prisma/client";
+import { MembershipRole } from "@/generated/prisma";
 import { AuthorizationError } from "@/lib/errors";
 import type { Session } from "@/server/auth/session";
 

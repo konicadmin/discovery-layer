@@ -5,7 +5,7 @@ import {
   QuoteSubmissionStatus,
   RfqStatus,
   VerificationStatus,
-} from "@prisma/client";
+} from "@/generated/prisma";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { logEvent } from "@/server/services/audit/log-event";

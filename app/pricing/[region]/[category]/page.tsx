@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PricingSignalStatus, Region } from "@prisma/client";
+import { PricingSignalStatus, Region } from "@/generated/prisma";
 import { absoluteUrl } from "@/lib/site";
 import { prisma } from "@/server/db/client";
 

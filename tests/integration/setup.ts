@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, afterEach } from "vitest";
 import { execSync } from "node:child_process";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma";
 
 /**
  * Integration tests run against a real Postgres database.

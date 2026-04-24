@@ -2,7 +2,7 @@ import {
   DiscoveryMethod,
   SourceUrlStatus,
   SourceUrlType,
-} from "@prisma/client";
+} from "@/generated/prisma";
 import { ValidationError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";

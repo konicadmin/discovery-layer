@@ -8,3 +8,4 @@ coverage
 .claude/
 next-env.d.ts
 *.tsbuildinfo
+src/generated/

@@ -1,4 +1,4 @@
-import { OrganizationType, type PrismaClient, VendorSource } from "@prisma/client";
+import { OrganizationType, type PrismaClient, VendorSource } from "@/generated/prisma";
 import { newId } from "@/lib/id";
 import { ValidationError } from "@/lib/errors";
 import { logEvent } from "@/server/services/audit/log-event";

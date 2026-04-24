@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { PricingSignalStatus } from "@prisma/client";
+import { PricingSignalStatus } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 
 const QuerySchema = z.object({

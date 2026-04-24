@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { ChecklistItemStatus } from "@prisma/client";
+import { ChecklistItemStatus } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 import { setChecklistItem } from "@/server/services/verification/review";
 import { errorResponse } from "@/lib/api/handle-error";

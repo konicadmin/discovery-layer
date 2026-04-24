@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma";
 import { PRICING_TARGETS } from "./pricing-targets";
 import { ensurePricingTarget } from "./pricing-target-utils";
 

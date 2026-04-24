@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ProfileStatus, VerificationStatus } from "@prisma/client";
+import { ProfileStatus, VerificationStatus } from "@/generated/prisma";
 import { getPrisma } from "./setup";
 import { newId } from "@/lib/id";
 import { createVendor } from "@/server/services/vendors/create-vendor";

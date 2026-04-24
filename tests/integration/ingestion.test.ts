@@ -6,7 +6,7 @@ import {
   PublicStatus,
   SourceUrlStatus,
   VendorSource,
-} from "@prisma/client";
+} from "@/generated/prisma";
 import { getPrisma } from "./setup";
 import { newId } from "@/lib/id";
 import { registerSource } from "@/server/services/ingestion/sources";

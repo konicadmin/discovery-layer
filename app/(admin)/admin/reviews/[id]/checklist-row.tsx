@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChecklistItemStatus } from "@prisma/client";
+import { ChecklistItemStatus } from "@/generated/prisma";
 
 const STATUSES: ChecklistItemStatus[] = [
   ChecklistItemStatus.pending,

@@ -1,4 +1,4 @@
-import { DecisionStatus, RfqStatus } from "@prisma/client";
+import { DecisionStatus, RfqStatus } from "@/generated/prisma";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";

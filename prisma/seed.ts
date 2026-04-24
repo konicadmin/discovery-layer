@@ -17,7 +17,7 @@ import {
   ReviewType,
   VendorSource,
   VerificationStatus,
-} from "@prisma/client";
+} from "../src/generated/prisma";
 import { newId } from "../src/lib/id";
 import { REGION_DEFAULT_CURRENCY } from "../src/lib/region";
 

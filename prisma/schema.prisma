@@ -13,6 +13,10 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Generated client lives in the source tree so Vercel's serverless
+  // bundler picks it up reliably even when pnpm's .pnpm store layer
+  // gets skipped during function snapshot assembly.
+  output   = "../src/generated/prisma"
 }
 
 datasource db {

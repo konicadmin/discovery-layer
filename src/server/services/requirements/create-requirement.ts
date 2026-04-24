@@ -1,4 +1,4 @@
-import { type Prisma, Region, RequirementStatus } from "@prisma/client";
+import { type Prisma, Region, RequirementStatus } from "@/generated/prisma";
 import { NotFoundError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";

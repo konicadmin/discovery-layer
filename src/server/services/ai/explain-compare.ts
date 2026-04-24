@@ -1,4 +1,4 @@
-import { AiTaskType } from "@prisma/client";
+import { AiTaskType } from "@/generated/prisma";
 import { type Db, withTx } from "@/server/db/with-tx";
 import { compareRfq } from "@/server/services/quotes/compare";
 import { getAiProvider } from "./provider-factory";

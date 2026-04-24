@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { DocumentType } from "@prisma/client";
+import { DocumentType } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 import { NotFoundError } from "@/lib/errors";
 import { attachDocument } from "@/server/services/vendors/update-profile";

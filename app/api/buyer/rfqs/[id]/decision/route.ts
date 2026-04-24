@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { DecisionStatus } from "@prisma/client";
+import { DecisionStatus } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 import { NotFoundError } from "@/lib/errors";
 import { decideRfq } from "@/server/services/rfqs/decide";

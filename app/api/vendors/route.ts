@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { VendorSource } from "@prisma/client";
+import { VendorSource } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 import { createVendor } from "@/server/services/vendors/create-vendor";
 import { DomainError } from "@/lib/errors";

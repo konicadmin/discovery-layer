@@ -1,4 +1,4 @@
-import { QuoteSubmissionStatus } from "@prisma/client";
+import { QuoteSubmissionStatus } from "@/generated/prisma";
 import { NotFoundError } from "@/lib/errors";
 import { type Db, withTx } from "@/server/db/with-tx";
 

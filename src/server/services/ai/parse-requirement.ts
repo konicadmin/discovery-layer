@@ -1,4 +1,4 @@
-import { AiTaskType } from "@prisma/client";
+import { AiTaskType } from "@/generated/prisma";
 import { ValidationError } from "@/lib/errors";
 import { type Db, withTx } from "@/server/db/with-tx";
 import { getAiProvider } from "./provider-factory";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MembershipRole } from "@prisma/client";
+import { MembershipRole } from "@/generated/prisma";
 import {
   isInternal,
   requireBuyerAccess,

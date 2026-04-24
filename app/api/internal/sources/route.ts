@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { DiscoveryMethod, SourceUrlStatus, SourceUrlType } from "@prisma/client";
+import { DiscoveryMethod, SourceUrlStatus, SourceUrlType } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 import { listSources, registerSource } from "@/server/services/ingestion/sources";
 import { errorResponse } from "@/lib/api/handle-error";

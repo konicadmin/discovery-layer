@@ -1,4 +1,4 @@
-import { Region } from "@prisma/client";
+import { Region } from "@/generated/prisma";
 
 export type PricingTarget = {
   vendorName: string;

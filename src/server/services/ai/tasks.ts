@@ -4,7 +4,7 @@ import {
   AiTaskStatus,
   AiTaskType,
   type Prisma,
-} from "@prisma/client";
+} from "@/generated/prisma";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";
 import type { Citation } from "./provider";

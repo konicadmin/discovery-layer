@@ -2,7 +2,7 @@ import {
   OrganizationType,
   PrismaClient,
   VendorSource,
-} from "@prisma/client";
+} from "@/generated/prisma";
 import { REGION_DEFAULT_CURRENCY } from "../src/lib/region";
 import { newId } from "../src/lib/id";
 import { registerSource } from "../src/server/services/ingestion/sources";

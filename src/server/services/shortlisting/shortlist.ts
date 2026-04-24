@@ -4,7 +4,7 @@ import {
   ProfileStatus,
   Region,
   VerificationStatus,
-} from "@prisma/client";
+} from "@/generated/prisma";
 import { NotFoundError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";

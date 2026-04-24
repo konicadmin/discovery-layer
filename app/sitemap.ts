@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { PublicStatus, PricingSignalStatus } from "@prisma/client";
+import { PublicStatus, PricingSignalStatus } from "@/generated/prisma";
 import { absoluteUrl } from "@/lib/site";
 import { prisma } from "@/server/db/client";
 

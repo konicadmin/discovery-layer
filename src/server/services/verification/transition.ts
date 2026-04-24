@@ -1,4 +1,4 @@
-import { ProfileStatus, VerificationStatus } from "@prisma/client";
+import { ProfileStatus, VerificationStatus } from "@/generated/prisma";
 import { NotFoundError } from "@/lib/errors";
 import { type Db, withTx } from "@/server/db/with-tx";
 import { logEvent } from "@/server/services/audit/log-event";

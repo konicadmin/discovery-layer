@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { ProfileStatus, VerificationStatus } from "@prisma/client";
+import { ProfileStatus, VerificationStatus } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 import { transitionVendor } from "@/server/services/verification/transition";
 import { DomainError } from "@/lib/errors";

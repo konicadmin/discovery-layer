@@ -1,4 +1,4 @@
-import { ProfileStatus, VerificationStatus } from "@prisma/client";
+import { ProfileStatus, VerificationStatus } from "@/generated/prisma";
 import { StateTransitionError } from "@/lib/errors";
 
 /**

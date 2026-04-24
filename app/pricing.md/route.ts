@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PricingSignalStatus } from "@prisma/client";
+import { PricingSignalStatus } from "@/generated/prisma";
 import { absoluteUrl, SITE_NAME } from "@/lib/site";
 import { prisma } from "@/server/db/client";
 

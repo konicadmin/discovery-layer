@@ -1,4 +1,4 @@
-import { Region } from "@prisma/client";
+import { Region } from "@/generated/prisma";
 
 /** Default ISO-4217 currency per region. Individual records may override. */
 export const REGION_DEFAULT_CURRENCY: Record<Region, string> = {

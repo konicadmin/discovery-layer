@@ -6,7 +6,7 @@ import {
   ReviewStatus,
   ReviewType,
   VerificationStatus,
-} from "@prisma/client";
+} from "@/generated/prisma";
 import { NotFoundError, StateTransitionError, ValidationError } from "@/lib/errors";
 import { newId } from "@/lib/id";
 import { type Db, withTx } from "@/server/db/with-tx";

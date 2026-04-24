@@ -3,7 +3,7 @@ import {
   type PrismaClient,
   NotificationChannel,
   NotificationStatus,
-} from "@prisma/client";
+} from "@/generated/prisma";
 import { newId } from "@/lib/id";
 
 export type NotificationTemplateKey =

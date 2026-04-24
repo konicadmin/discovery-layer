@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma";
 import { HttpFetcher } from "../src/server/services/ingestion/http-fetcher";
 import { crawlAndCapturePricing } from "../src/server/services/ingestion/crawl";
 import { registerSource } from "../src/server/services/ingestion/sources";
