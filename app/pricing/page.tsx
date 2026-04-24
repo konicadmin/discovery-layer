@@ -28,30 +28,35 @@ export default async function PricingIndexPage() {
       orderBy: { observedAt: "desc" },
       take: 50,
     }),
-    prisma.vendorServiceCategory.findMany({
+    prisma.serviceCategory.findMany({
       where: {
-        vendorProfile: {
-          pricingSignals: { some: { status: PricingSignalStatus.published } },
+        vendorCategories: {
+          some: {
+            vendorProfile: {
+              pricingSignals: { some: { status: PricingSignalStatus.published } },
+            },
+          },
         },
       },
-      include: {
-        serviceCategory: true,
-        vendorProfile: { include: { organization: true } },
+      select: {
+        id: true,
+        code: true,
+        label: true,
+        _count: {
+          select: {
+            vendorCategories: {
+              where: {
+                vendorProfile: {
+                  pricingSignals: { some: { status: PricingSignalStatus.published } },
+                },
+              },
+            },
+          },
+        },
       },
-      take: 500,
+      orderBy: { label: "asc" },
     }),
   ]);
-
-  const categoryCounts = new Map<string, { label: string; region: string; count: number }>();
-  for (const item of categories) {
-    const region = item.vendorProfile.organization.region;
-    const key = `${region}:${item.serviceCategory.code}`;
-    const current =
-      categoryCounts.get(key) ??
-      { label: item.serviceCategory.label, region, count: 0 };
-    current.count += 1;
-    categoryCounts.set(key, current);
-  }
 
   return (
     <main className="min-h-screen bg-white text-gray-950">
@@ -76,28 +81,18 @@ export default async function PricingIndexPage() {
         }}
       />
       <section className="mx-auto max-w-6xl px-5 py-8">
-        <h2 className="text-lg font-semibold">Published markets</h2>
+        <h2 className="text-lg font-semibold">Categories</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from(categoryCounts.entries()).map(([key, item]) => {
-            const [, code] = key.split(":");
-            return (
-              <Link
-                key={key}
-                href={`/pricing/${item.region.toLowerCase()}/${code}`}
-                className="border p-4 hover:bg-gray-50"
-              >
-                <div className="text-sm font-semibold">{item.label}</div>
-                <div className="mt-1 text-xs text-gray-600">
-                  {item.region} · {item.count} vendor record{item.count === 1 ? "" : "s"}
-                </div>
-              </Link>
-            );
-          })}
-          {categoryCounts.size === 0 && (
-            <p className="text-sm text-gray-600">
-              No reviewed pricing has been published yet. Once real crawls are reviewed,
-              markets will appear here automatically.
-            </p>
+          {categories.map((c) => (
+            <Link key={c.code} href={`/pricing/${c.code}`} className="border p-4 hover:bg-gray-50">
+              <div className="text-sm font-semibold">{c.label}</div>
+              <div className="mt-1 text-xs text-gray-600">
+                {c._count.vendorCategories} vendor record{c._count.vendorCategories === 1 ? "" : "s"}
+              </div>
+            </Link>
+          ))}
+          {categories.length === 0 && (
+            <p className="text-sm text-gray-600">No categories have published pricing yet.</p>
           )}
         </div>
       </section>
