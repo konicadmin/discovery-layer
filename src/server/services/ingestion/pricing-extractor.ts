@@ -4,6 +4,7 @@ import {
   detectCurrency,
   parseLocalizedNumber,
 } from "@/lib/region";
+import { extractSaasSeatMonth } from "./pricing-patterns-saas";
 
 export type PricingCandidate = {
   signalType: PricingSignalType;
@@ -39,8 +40,13 @@ export class DeterministicPricingExtractor implements PricingExtractor {
     const normalized = normalizePageText(input.text);
     const lower = normalized.toLowerCase();
 
+    // SaaS per-seat / per-month pattern family runs independently of the
+    // security-staffing currency gate: a page with only `$X/user/month` is
+    // a valid SaaS pricing signal even when no other rate shape appears.
+    const saasSignals = extractSaasSeatMonth(normalized);
+
     const detected = detectCurrency(normalized);
-    if (!detected) return [];
+    if (!detected) return saasSignals;
     const { currency, region, decimalStyle } = detected;
 
     const results: PricingCandidate[] = [];
@@ -302,6 +308,7 @@ export class DeterministicPricingExtractor implements PricingExtractor {
       }
     }
 
+    results.push(...saasSignals);
     return dedupeByType(results);
   }
 }
