@@ -132,6 +132,22 @@ async function main() {
     update: {},
   });
 
+  // Additional public service categories for the AI/SaaS pricing pivot.
+  const extraCategories: Array<{ code: string; label: string }> = [
+    { code: "ai_models", label: "AI Models" },
+    { code: "ai_infra", label: "AI Infrastructure" },
+    { code: "dev_tools", label: "Developer Tools" },
+    { code: "saas_ops", label: "SaaS / Operations" },
+    { code: "data_infra", label: "Data Infrastructure" },
+  ];
+  for (const cat of extraCategories) {
+    await prisma.serviceCategory.upsert({
+      where: { code: cat.code },
+      create: { id: newId(), code: cat.code, label: cat.label },
+      update: { label: cat.label },
+    });
+  }
+
   // Region-scoped verification checklist
   for (const [idx, item] of CHECKLIST.entries()) {
     await prisma.verificationChecklistItem.upsert({
