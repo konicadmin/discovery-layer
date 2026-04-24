@@ -152,18 +152,7 @@ export default async function PublicVendorPage({
 
         {profile.pricingSignals.length > 0 && (
           <section className="mt-6 bg-white border rounded p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold">Public pricing signals</h2>
-              <span className="text-xs text-amber-700">
-                indicative only — confirm with vendor
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mb-3">
-              These rates were extracted from public vendor pages.
-              They may exclude statutory costs, have minimum-quantity / term
-              conditions, or be out of date. Treat normalized figures as rough
-              comparators, not firm quotes.
-            </p>
+            <h2 className="text-sm font-semibold mb-2">Public pricing signals</h2>
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 text-left">
                 <tr>
@@ -227,10 +216,6 @@ export default async function PublicVendorPage({
 
         <section className="mt-6 bg-white border rounded p-4">
           <h2 className="text-sm font-semibold mb-2">Public evidence</h2>
-          <p className="text-xs text-gray-500 mb-3">
-            These fields were gathered from the public web. Each row shows the field,
-            value, provenance, and freshness.
-          </p>
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50 text-left">
               <tr>
@@ -267,9 +252,7 @@ export default async function PublicVendorPage({
         )}
 
         <footer className="mt-6 text-xs text-gray-500">
-          This is a {trust.label.toLowerCase()}. Verified status is granted only after
-          ops review of proof documents and compliance records. Last published:{" "}
-          {snap.lastPublishedAt?.toISOString().slice(0, 10) ?? "—"}.
+          Last published: {snap.lastPublishedAt?.toISOString().slice(0, 10) ?? "—"}
         </footer>
       </div>
     </main>

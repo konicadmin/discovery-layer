@@ -75,35 +75,6 @@ export default async function PricingIndexPage() {
           }),
         }}
       />
-      <section className="border-b bg-gray-50">
-        <div className="mx-auto max-w-6xl px-5 py-10">
-          <p className="text-sm font-medium uppercase tracking-wide text-gray-500">
-            Global public pricing intelligence
-          </p>
-          <h1 className="mt-3 max-w-3xl text-4xl font-semibold">
-            Source-linked pricing signals from public vendor pages.
-          </h1>
-          <p className="mt-4 max-w-2xl text-base text-gray-600">
-            Discovery Layer crawls public pricing pages, extracts visible rates,
-            and publishes reviewed evidence for buyers, search engines, and AI agents.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-3 text-sm">
-            <Link className="underline" href="/llms.txt">
-              llms.txt
-            </Link>
-            <Link className="underline" href="/llms-full.txt">
-              llms-full.txt
-            </Link>
-            <Link className="underline" href="/pricing.md">
-              markdown pricing index
-            </Link>
-            <Link className="underline" href="/sitemap.xml">
-              sitemap
-            </Link>
-          </div>
-        </div>
-      </section>
-
       <section className="mx-auto max-w-6xl px-5 py-8">
         <h2 className="text-lg font-semibold">Published markets</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
