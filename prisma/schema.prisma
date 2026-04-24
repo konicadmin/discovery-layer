@@ -234,10 +234,64 @@ model VendorProfile {
   publicSnapshots   VendorPublicSnapshot[]
   pageMetrics       VendorPageMetric[]
   pricingSignals    PublicPricingSignal[]
+  products          Product[]
 
   @@index([profileStatus])
   @@index([verificationStatus])
   @@map("vendor_profiles")
+}
+
+model Product {
+  id              String   @id
+  vendorProfileId String   @map("vendor_profile_id")
+  vendorProfile   VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  slug            String
+  displayName     String   @map("display_name")
+  productKind     ProductKind @default(app) @map("product_kind")
+  canonicalUrl    String?  @map("canonical_url")
+  description     String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt      @map("updated_at")
+
+  plans           Plan[]
+
+  @@unique([vendorProfileId, slug])
+  @@index([slug])
+  @@map("products")
+}
+
+model Plan {
+  id          String   @id
+  productId   String   @map("product_id")
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  slug        String
+  displayName String   @map("display_name")
+  tier        PlanTier @default(unspecified)
+  isFree      Boolean  @default(false) @map("is_free")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  @@unique([productId, slug])
+  @@map("plans")
+}
+
+enum ProductKind {
+  app
+  api
+  library
+  platform
+  bundle
+}
+
+enum PlanTier {
+  free
+  starter
+  pro
+  team
+  business
+  enterprise
+  unspecified
 }
 
 model VendorServiceCategory {
