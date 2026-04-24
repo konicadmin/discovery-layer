@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 export default function VendorPageError({
   error,
   reset,
@@ -32,9 +34,9 @@ export default function VendorPageError({
           >
             Try again
           </button>
-          <a className="border px-4 py-2 text-sm" href="/pricing">
+          <Link className="border px-4 py-2 text-sm" href="/pricing">
             Browse pricing
-          </a>
+          </Link>
         </div>
       </section>
     </main>

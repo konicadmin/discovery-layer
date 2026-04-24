@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 /**
  * Route-level error boundary. Next.js renders this when a Server Component
  * throws during the render of any non-group route under /app that isn't
@@ -40,9 +42,9 @@ export default function RootError({
           >
             Try again
           </button>
-          <a className="border px-4 py-2 text-sm" href="/">
+          <Link className="border px-4 py-2 text-sm" href="/">
             Back home
-          </a>
+          </Link>
         </div>
       </section>
     </main>

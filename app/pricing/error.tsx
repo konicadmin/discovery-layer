@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 export default function PricingError({
   error,
   reset,
@@ -33,9 +35,9 @@ export default function PricingError({
           >
             Try again
           </button>
-          <a className="border px-4 py-2 text-sm" href="/">
+          <Link className="border px-4 py-2 text-sm" href="/">
             Back home
-          </a>
+          </Link>
         </div>
       </section>
     </main>
