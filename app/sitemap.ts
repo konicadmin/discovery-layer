@@ -1,66 +1,54 @@
 import type { MetadataRoute } from "next";
-import { PublicStatus, PricingSignalStatus } from "@/generated/prisma";
-import { absoluteUrl } from "@/lib/site";
 import { prisma } from "@/server/db/client";
+import { absoluteUrl } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const now = new Date();
-  const [snapshots, pricedCategories] = await Promise.all([
+  const [categories, snaps, products] = await Promise.all([
+    prisma.serviceCategory.findMany({ select: { code: true } }),
     prisma.vendorPublicSnapshot.findMany({
-      where: { publicStatus: PublicStatus.published },
+      where: { publicStatus: "published" },
       select: { slug: true, lastPublishedAt: true },
-      orderBy: { lastPublishedAt: "desc" },
-      take: 5000,
     }),
-    prisma.vendorServiceCategory.findMany({
-      where: {
+    prisma.product.findMany({
+      select: {
+        slug: true,
         vendorProfile: {
-          pricingSignals: { some: { status: PricingSignalStatus.published } },
+          select: {
+            publicSnapshots: {
+              where: { publicStatus: "published" },
+              select: { slug: true },
+            },
+          },
         },
       },
-      select: {
-        serviceCategory: { select: { code: true } },
-        vendorProfile: { select: { organization: { select: { region: true } } } },
-      },
-      distinct: ["serviceCategoryId", "vendorProfileId"],
-      take: 5000,
     }),
   ]);
 
-  const categoryPaths = new Set(
-    pricedCategories.map(
-      (item) =>
-        `/pricing/${item.vendorProfile.organization.region.toLowerCase()}/${item.serviceCategory.code}`,
-    ),
-  );
-
-  return [
-    {
-      url: absoluteUrl("/"),
-      lastModified: now,
-      changeFrequency: "daily",
-      priority: 1,
-    },
-    {
-      url: absoluteUrl("/pricing"),
-      lastModified: now,
-      changeFrequency: "daily",
-      priority: 0.9,
-    },
-    ...Array.from(categoryPaths).map((path) => ({
-      url: absoluteUrl(path),
-      lastModified: now,
-      changeFrequency: "daily" as const,
-      priority: 0.8,
-    })),
-    ...snapshots.map((snap) => ({
-      url: absoluteUrl(`/vendors/${snap.slug}`),
-      lastModified: snap.lastPublishedAt ?? now,
-      changeFrequency: "weekly" as const,
-      priority: 0.7,
-    })),
+  const now = new Date();
+  const out: MetadataRoute.Sitemap = [
+    { url: absoluteUrl("/"), lastModified: now, priority: 1 },
+    { url: absoluteUrl("/pricing"), lastModified: now, priority: 0.9 },
   ];
+  for (const c of categories) {
+    out.push({ url: absoluteUrl(`/pricing/${c.code}`), lastModified: now, priority: 0.8 });
+  }
+  for (const s of snaps) {
+    out.push({
+      url: absoluteUrl(`/vendors/${s.slug}`),
+      lastModified: s.lastPublishedAt ?? now,
+      priority: 0.7,
+    });
+  }
+  for (const p of products) {
+    const slug = p.vendorProfile.publicSnapshots[0]?.slug;
+    if (!slug) continue;
+    out.push({
+      url: absoluteUrl(`/vendors/${slug}/${p.slug}`),
+      lastModified: now,
+      priority: 0.6,
+    });
+  }
+  return out;
 }
-
