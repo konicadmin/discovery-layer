@@ -17,6 +17,7 @@ type Props = {
   excerpt: string;
   minQuantity: number | null;
   minContractMonths: number | null;
+  sourceUrl: string | null;
 };
 
 export function PricingDecisionRow(props: Props) {
@@ -84,6 +85,20 @@ export function PricingDecisionRow(props: Props) {
       <td className="px-3 py-2 font-mono text-xs">{props.confidence.toFixed(2)}</td>
       <td className="px-3 py-2 text-xs text-gray-700 max-w-sm">
         <div className="bg-gray-50 border rounded px-2 py-1">{props.excerpt}</div>
+      </td>
+      <td className="px-3 py-2 text-xs max-w-[220px] break-all">
+        {props.sourceUrl ? (
+          <a
+            className="underline text-blue-700"
+            href={props.sourceUrl}
+            target="_blank"
+            rel="nofollow noreferrer"
+          >
+            {props.sourceUrl.replace(/^https?:\/\//, "")}
+          </a>
+        ) : (
+          "—"
+        )}
       </td>
       <td className="px-3 py-2 space-y-2 min-w-[220px]">
         <textarea

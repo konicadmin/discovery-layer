@@ -21,6 +21,17 @@ export default async function PricingQueue() {
   const bucket: Record<string, number> = {};
   for (const c of counts) bucket[c.status] = c._count._all;
 
+  const sourceUrlIds = Array.from(
+    new Set(pending.map((s) => s.sourceUrlId).filter((id): id is string => Boolean(id))),
+  );
+  const sourceUrls = sourceUrlIds.length
+    ? await prisma.sourceUrl.findMany({
+        where: { id: { in: sourceUrlIds } },
+        select: { id: true, url: true },
+      })
+    : [];
+  const sourceUrlById = new Map(sourceUrls.map((s) => [s.id, s.url]));
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -45,6 +56,7 @@ export default async function PricingQueue() {
             <th className="px-3 py-2">Normalized PGPM</th>
             <th className="px-3 py-2">Confidence</th>
             <th className="px-3 py-2">Excerpt</th>
+            <th className="px-3 py-2">Source</th>
             <th className="px-3 py-2">Decision</th>
           </tr>
         </thead>
@@ -65,11 +77,12 @@ export default async function PricingQueue() {
               excerpt={s.extractedText}
               minQuantity={s.minQuantity}
               minContractMonths={s.minContractMonths}
+              sourceUrl={s.sourceUrlId ? sourceUrlById.get(s.sourceUrlId) ?? null : null}
             />
           ))}
           {pending.length === 0 && (
             <tr>
-              <td colSpan={7} className="px-3 py-6 text-center text-gray-500 text-sm">
+              <td colSpan={8} className="px-3 py-6 text-center text-gray-500 text-sm">
                 No pending pricing signals.
               </td>
             </tr>
