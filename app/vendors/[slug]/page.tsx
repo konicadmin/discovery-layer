@@ -20,6 +20,64 @@ const TRUST_LABELS: Record<string, { label: string; tone: string }> = {
   },
 };
 
+type PricingUnitMeta = {
+  unitCode?: string;
+  referenceQuantity?: {
+    "@type": "QuantitativeValue";
+    value: number;
+    unitCode: string;
+  };
+  description?: string;
+};
+
+// Map Prisma `PricingUnit` enum values to Schema.org / UN/CEFACT codes.
+// Unknown / `unspecified` values omit `unitCode` so we don't fabricate one.
+function mapPricingUnit(unit: string | null | undefined): PricingUnitMeta {
+  switch (unit) {
+    case "per_guard_per_month":
+      return {
+        unitCode: "MON",
+        referenceQuantity: {
+          "@type": "QuantitativeValue",
+          value: 1,
+          unitCode: "C62",
+        },
+        description: "per guard per month",
+      };
+    case "per_hour":
+      return { unitCode: "HUR", description: "per hour" };
+    case "per_day":
+      return { unitCode: "DAY", description: "per day" };
+    case "per_shift":
+      // No standard UN/CEFACT code for "shift"; keep description only.
+      return { description: "per shift" };
+    case "package_monthly":
+      return { unitCode: "MON", description: "monthly package" };
+    default:
+      return {};
+  }
+}
+
+// Recursively drop keys whose value is `undefined` so the JSON-LD output
+// doesn't carry noise. Arrays are preserved (with their undefined entries
+// removed) and non-plain objects are returned as-is.
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry) => entry !== undefined)
+      .map((entry) => stripUndefined(entry)) as unknown as T;
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === undefined) continue;
+      out[k] = stripUndefined(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -89,31 +147,59 @@ export default async function PublicVendorPage({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            name: profile.organization.displayName,
-            url: profile.organization.website ?? absoluteUrl(`/vendors/${snap.slug}`),
-            areaServed: profile.organization.region,
-            address: profile.hqCity
-              ? {
-                  "@type": "PostalAddress",
-                  addressLocality: profile.hqCity.name,
-                  addressRegion: profile.hqCity.state,
-                  addressCountry: profile.hqCity.country,
-                }
-              : undefined,
-            makesOffer: profile.pricingSignals.map((p) => ({
-              "@type": "Offer",
-              price: Number(p.priceValue),
-              priceCurrency: p.currency,
-              availability: "https://schema.org/InStock",
-              url: p.sourceUrlId
-                ? sourceById.get(p.sourceUrlId) ?? absoluteUrl(`/vendors/${snap.slug}`)
-                : absoluteUrl(`/vendors/${snap.slug}`),
-              description: p.extractedText,
-            })),
-          }),
+          __html: JSON.stringify(
+            stripUndefined({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: profile.organization.displayName,
+              url:
+                profile.organization.website ?? absoluteUrl(`/vendors/${snap.slug}`),
+              areaServed: profile.organization.region,
+              address: profile.hqCity
+                ? {
+                    "@type": "PostalAddress",
+                    addressLocality: profile.hqCity.name,
+                    addressRegion: profile.hqCity.state,
+                    addressCountry: profile.hqCity.country,
+                  }
+                : undefined,
+              makesOffer: profile.pricingSignals.map((p) => {
+                const offerUrl = p.sourceUrlId
+                  ? sourceById.get(p.sourceUrlId) ??
+                    absoluteUrl(`/vendors/${snap.slug}`)
+                  : absoluteUrl(`/vendors/${snap.slug}`);
+                const unitMeta = mapPricingUnit(p.unit);
+                const priceSpecification = stripUndefined({
+                  "@type": "UnitPriceSpecification",
+                  price: Number(p.priceValue),
+                  priceCurrency: p.currency,
+                  unitCode: unitMeta.unitCode,
+                  referenceQuantity: unitMeta.referenceQuantity,
+                  description: unitMeta.description,
+                });
+                const eligibleQuantity =
+                  p.minQuantity != null
+                    ? {
+                        "@type": "QuantitativeValue",
+                        minValue: p.minQuantity,
+                      }
+                    : undefined;
+                const description = p.extractedText
+                  ? p.extractedText.length > 280
+                    ? `${p.extractedText.slice(0, 277)}...`
+                    : p.extractedText
+                  : undefined;
+                return stripUndefined({
+                  "@type": "Offer",
+                  url: offerUrl,
+                  availability: "https://schema.org/InStock",
+                  priceSpecification,
+                  eligibleQuantity,
+                  description,
+                });
+              }),
+            }),
+          ),
         }}
       />
       <div className="max-w-3xl mx-auto px-4 py-8">
