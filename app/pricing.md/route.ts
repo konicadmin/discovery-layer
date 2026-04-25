@@ -20,6 +20,17 @@ export async function GET() {
     orderBy: { observedAt: "desc" },
     take: 500,
   });
+  const sourceIds = rows
+    .map((row) => row.sourceUrlId)
+    .filter((id): id is string => Boolean(id));
+  const sources =
+    sourceIds.length > 0
+      ? await prisma.sourceUrl.findMany({
+          where: { id: { in: sourceIds } },
+          select: { id: true, url: true },
+        })
+      : [];
+  const sourceById = new Map(sources.map((source) => [source.id, source.url]));
 
   const lines: string[] = [];
   lines.push("# Discovery Layer Global Pricing Index");
@@ -37,7 +48,8 @@ export async function GET() {
         ? `[${r.product.displayName}](${absoluteUrl(`/vendors/${slug}/${r.product.slug}`)})`
         : r.product.displayName
       : "";
-    const source = "";
+    const sourceUrl = r.sourceUrlId ? sourceById.get(r.sourceUrlId) : null;
+    const source = sourceUrl ? `[source](${sourceUrl})` : "";
     lines.push(
       `| ${vendorLink} | ${productLink} | ${r.plan?.displayName ?? ""} | ${cat} | ` +
         `${r.currency} ${Number(r.priceValue)} | ${r.unit} | ` +

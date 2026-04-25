@@ -45,6 +45,17 @@ export default async function ProductPage({
   if (!p) notFound();
 
   const canonical = absoluteUrl(`/vendors/${slug}/${product}`);
+  const sourceIds = p.pricingSignals
+    .map((signal) => signal.sourceUrlId)
+    .filter((id): id is string => Boolean(id));
+  const sources =
+    sourceIds.length > 0
+      ? await prisma.sourceUrl.findMany({
+          where: { id: { in: sourceIds } },
+          select: { id: true, url: true },
+        })
+      : [];
+  const sourceById = new Map(sources.map((source) => [source.id, source.url]));
 
   return (
     <main className="min-h-screen bg-gray-50 text-gray-900">
@@ -69,7 +80,14 @@ export default async function ProductPage({
               },
               availability: "https://schema.org/InStock",
               description: s.plan?.displayName,
-              url: canonical,
+              url: s.sourceUrlId ? sourceById.get(s.sourceUrlId) ?? canonical : canonical,
+              isBasedOn: s.sourceUrlId
+                ? {
+                    "@type": "WebPage",
+                    url: sourceById.get(s.sourceUrlId) ?? canonical,
+                    dateModified: s.observedAt.toISOString(),
+                  }
+                : undefined,
             })),
           }),
         }}
