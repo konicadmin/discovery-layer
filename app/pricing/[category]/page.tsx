@@ -40,6 +40,7 @@ export default async function CategoryPage({
       },
       product: true,
       plan: true,
+      sourceUrl: true,
     },
     orderBy: { observedAt: "desc" },
     take: 200,
@@ -63,6 +64,7 @@ export default async function CategoryPage({
                 <th className="px-3 py-2">Price</th>
                 <th className="px-3 py-2">Unit</th>
                 <th className="px-3 py-2">Observed</th>
+                <th className="px-3 py-2">Source</th>
               </tr>
             </thead>
             <tbody>
@@ -96,12 +98,26 @@ export default async function CategoryPage({
                     <td className="px-3 py-2">
                       {r.observedAt.toISOString().slice(0, 10)}
                     </td>
+                    <td className="px-3 py-2">
+                      {r.sourceUrl?.url ? (
+                        <a
+                          className="underline"
+                          href={r.sourceUrl.url}
+                          rel="nofollow noreferrer"
+                          target="_blank"
+                        >
+                          source
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td className="px-3 py-4 text-sm text-gray-600" colSpan={6}>
+                  <td className="px-3 py-4 text-sm text-gray-600" colSpan={7}>
                     No published pricing signals in this category yet.
                   </td>
                 </tr>

@@ -24,6 +24,7 @@ export default async function PricingIndexPage() {
             publicSnapshots: { where: { publicStatus: "published" }, take: 1 },
           },
         },
+        sourceUrl: true,
       },
       orderBy: { observedAt: "desc" },
       take: 50,
@@ -114,6 +115,7 @@ export default async function PricingIndexPage() {
                 <th className="px-3 py-2">Price</th>
                 <th className="px-3 py-2">Unit</th>
                 <th className="px-3 py-2">Observed</th>
+                <th className="px-3 py-2">Source</th>
               </tr>
             </thead>
             <tbody>
@@ -144,12 +146,26 @@ export default async function PricingIndexPage() {
                     <td className="px-3 py-2">
                       {signal.observedAt.toISOString().slice(0, 10)}
                     </td>
+                    <td className="px-3 py-2">
+                      {signal.sourceUrl?.url ? (
+                        <a
+                          className="underline"
+                          href={signal.sourceUrl.url}
+                          rel="nofollow noreferrer"
+                          target="_blank"
+                        >
+                          source
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {signals.length === 0 && (
                 <tr>
-                  <td className="px-3 py-4 text-sm text-gray-600" colSpan={6}>
+                  <td className="px-3 py-4 text-sm text-gray-600" colSpan={7}>
                     No published pricing signals yet.
                   </td>
                 </tr>
