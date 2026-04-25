@@ -14,6 +14,18 @@ export async function GET() {
       "discovery.list_markets",
       "discovery.search_pricing",
       "discovery.get_vendor",
+      {
+        name: "list_products",
+        description: "List products for a vendor by slug.",
+      },
+      {
+        name: "get_plans",
+        description: "List plans for a vendor's product by slugs.",
+      },
+      {
+        name: "get_product_pricing",
+        description: "List published pricing signals for a product.",
+      },
     ],
     publicDataPolicy:
       "Only published, reviewed public pricing signals are exposed through this endpoint.",
