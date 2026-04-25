@@ -193,7 +193,7 @@ export async function attachDocument(
   db: Db,
   args: {
     vendorProfileId: string;
-    documentType: import("@prisma/client").DocumentType;
+    documentType: import("@/generated/prisma").DocumentType;
     storageKey: string;
     fileName: string;
     mimeType: string;

@@ -1,109 +1,79 @@
-import { NextResponse } from "next/server";
-import { PublicStatus, PricingSignalStatus } from "@/generated/prisma";
-import { absoluteUrl, SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
 import { prisma } from "@/server/db/client";
+import { absoluteUrl } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const [snapshots, signals] = await Promise.all([
+  const [cats, snaps, signals] = await Promise.all([
+    prisma.serviceCategory.findMany({ orderBy: { label: "asc" } }),
     prisma.vendorPublicSnapshot.findMany({
-      where: { publicStatus: PublicStatus.published },
+      where: { publicStatus: "published" },
       include: {
         vendorProfile: {
-          include: {
-            organization: true,
-            hqCity: true,
-            serviceCategories: { include: { serviceCategory: true } },
-          },
+          include: { organization: true, products: true },
         },
       },
       orderBy: { lastPublishedAt: "desc" },
-      take: 100,
     }),
     prisma.publicPricingSignal.findMany({
-      where: { status: PricingSignalStatus.published },
+      where: { status: "published" },
       include: {
-        vendorProfile: {
-          include: {
-            organization: true,
-            serviceCategories: { include: { serviceCategory: true } },
-          },
-        },
+        vendorProfile: { include: { organization: true } },
+        product: true,
+        plan: true,
       },
       orderBy: { observedAt: "desc" },
       take: 100,
     }),
   ]);
 
-  const categories = new Map<string, { label: string; regions: Set<string>; count: number }>();
-  for (const signal of signals) {
-    for (const vc of signal.vendorProfile.serviceCategories) {
-      const existing =
-        categories.get(vc.serviceCategory.code) ??
-        {
-          label: vc.serviceCategory.label,
-          regions: new Set<string>(),
-          count: 0,
-        };
-      existing.regions.add(signal.vendorProfile.organization.region);
-      existing.count += 1;
-      categories.set(vc.serviceCategory.code, existing);
+  const lines: string[] = [];
+  lines.push("# Discovery Layer — Full Agent Context");
+  lines.push("");
+  lines.push("Discovery Layer publishes reviewed, source-linked public pricing signals for AI agents, search systems, and researchers.");
+  lines.push("");
+  lines.push("## Important URLs");
+  lines.push(`- MCP endpoint: ${absoluteUrl("/api/mcp")}`);
+  lines.push(`- MCP discovery metadata: ${absoluteUrl("/.well-known/mcp.json")}`);
+  lines.push(`- Legacy plugin manifest: ${absoluteUrl("/.well-known/ai-plugin.json")}`);
+  lines.push(`- Global pricing index: ${absoluteUrl("/pricing")}`);
+  lines.push(`- Markdown pricing index: ${absoluteUrl("/pricing.md")}`);
+  lines.push(`- Sitemap: ${absoluteUrl("/sitemap.xml")}`);
+  lines.push(`- Robots policy: ${absoluteUrl("/robots.txt")}`);
+  lines.push("");
+  lines.push("## Categories");
+  for (const c of cats) {
+    lines.push(`- [${c.label}](${absoluteUrl(`/pricing/${c.code}`)})`);
+  }
+  lines.push("");
+  lines.push("## Vendors and Products");
+  for (const s of snaps) {
+    const org = s.vendorProfile.organization;
+    lines.push(`- ${org.displayName} — ${absoluteUrl(`/vendors/${s.slug}`)}`);
+    for (const p of s.vendorProfile.products) {
+      lines.push(`  - ${p.displayName} — ${absoluteUrl(`/vendors/${s.slug}/${p.slug}`)}`);
     }
   }
-
-  const lines = [
-    `# ${SITE_NAME}`,
-    "",
-    SITE_DESCRIPTION,
-    "",
-    "Discovery Layer tracks public pricing evidence across vendors, categories, and regions. The site is designed for humans, search engines, and AI agents that need source-linked pricing context.",
-    "",
-    "## Important URLs",
-    `- MCP endpoint: ${absoluteUrl("/api/mcp")}`,
-    `- MCP discovery metadata: ${absoluteUrl("/.well-known/mcp.json")}`,
-    `- Legacy plugin manifest: ${absoluteUrl("/.well-known/ai-plugin.json")}`,
-    `- Global pricing index: ${absoluteUrl("/pricing")}`,
-    `- Markdown pricing index: ${absoluteUrl("/pricing.md")}`,
-    `- Sitemap: ${absoluteUrl("/sitemap.xml")}`,
-    `- Robots policy: ${absoluteUrl("/robots.txt")}`,
-    "",
-    "## Current Published Categories",
-    ...(
-      categories.size > 0
-        ? Array.from(categories.entries()).map(
-            ([code, item]) =>
-              `- ${item.label} (${code}): ${item.count} published signal(s), regions ${Array.from(item.regions).join(", ")}`,
-          )
-        : ["- No published pricing categories yet."]
-    ),
-    "",
-    "## Recent Published Vendor Pages",
-    ...(
-      snapshots.length > 0
-        ? snapshots.map((snap) => {
-            const profile = snap.vendorProfile;
-            const cats = profile.serviceCategories
-              .map((c) => c.serviceCategory.label)
-              .join(", ");
-            return `- [${profile.organization.displayName}](${absoluteUrl(`/vendors/${snap.slug}`)}): ${cats || "uncategorized"}; region ${profile.organization.region}; city ${profile.hqCity?.name ?? "unknown"}`;
-          })
-        : ["- No published vendor pages yet."]
-    ),
-    "",
-    "## Recent Published Pricing Signals",
-    ...(
-      signals.length > 0
-        ? signals.map(
-            (signal) =>
-              `- ${signal.vendorProfile.organization.displayName}: ${signal.currency} ${Number(signal.priceValue)} (${signal.signalType}, ${signal.unit}), observed ${signal.observedAt.toISOString().slice(0, 10)}`,
-          )
-        : ["- No published pricing signals yet."]
-    ),
-    "",
-  ];
-
-  return new NextResponse(lines.join("\n"), {
+  if (snaps.length === 0) {
+    lines.push("- No published vendor pages yet.");
+  }
+  lines.push("");
+  lines.push("## Recent Published Pricing Signals");
+  if (signals.length > 0) {
+    for (const signal of signals) {
+      const product = signal.product ? ` / ${signal.product.displayName}` : "";
+      const plan = signal.plan ? ` / ${signal.plan.displayName}` : "";
+      lines.push(
+        `- ${signal.vendorProfile.organization.displayName}${product}${plan}: ` +
+          `${signal.currency} ${Number(signal.priceValue)} (${signal.unit}), observed ` +
+          signal.observedAt.toISOString().slice(0, 10),
+      );
+    }
+  } else {
+    lines.push("- No published pricing signals yet.");
+  }
+  lines.push("");
+  return new Response(lines.join("\n"), {
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
 }

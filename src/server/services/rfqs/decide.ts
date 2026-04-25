@@ -79,8 +79,8 @@ export async function postRfqMessage(
     body: string;
     senderUserId?: string;
     senderOrgId?: string;
-    messageType?: import("@prisma/client").MessageType;
-    visibility?: import("@prisma/client").MessageVisibility;
+    messageType?: import("@/generated/prisma").MessageType;
+    visibility?: import("@/generated/prisma").MessageVisibility;
   },
 ) {
   if (!args.body?.trim()) throw new ValidationError("message body required");

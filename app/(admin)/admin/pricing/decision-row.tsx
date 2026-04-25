@@ -38,7 +38,6 @@ export function PricingDecisionRow(props: Props) {
       body: JSON.stringify({
         decision,
         notes: notes || undefined,
-        actorUserId: "ops-console",
       }),
     });
     setBusy(null);

@@ -4,6 +4,11 @@ import {
   detectCurrency,
   parseLocalizedNumber,
 } from "@/lib/region";
+import {
+  extractMeteredPricing,
+  extractSaasSeatMonth,
+  extractTokenPricing,
+} from "./pricing-patterns-saas";
 
 export type PricingCandidate = {
   signalType: PricingSignalType;
@@ -39,8 +44,19 @@ export class DeterministicPricingExtractor implements PricingExtractor {
     const normalized = normalizePageText(input.text);
     const lower = normalized.toLowerCase();
 
+    // SaaS per-seat / per-month pattern family runs independently of the
+    // security-staffing currency gate: a page with only `$X/user/month` is
+    // a valid SaaS pricing signal even when no other rate shape appears.
+    const saasSignals = extractSaasSeatMonth(normalized);
+    // AI token pricing ($/1M tokens, $/1K tokens) likewise runs independently
+    // of the security-staffing currency gate so token-only pages still emit.
+    const tokenSignals = extractTokenPricing(normalized);
+    // Metered API pricing (per-call / per-request / per-1K-requests) is also
+    // currency-gate-independent so per-call-only pages still emit.
+    const meteredSignals = extractMeteredPricing(normalized);
+
     const detected = detectCurrency(normalized);
-    if (!detected) return [];
+    if (!detected) return [...saasSignals, ...tokenSignals, ...meteredSignals];
     const { currency, region, decimalStyle } = detected;
 
     const results: PricingCandidate[] = [];
@@ -167,27 +183,10 @@ export class DeterministicPricingExtractor implements PricingExtractor {
       });
     }
 
-    // SaaS/API subscription conventions: "$20/user/month",
-    // "$20 per seat per month", "€99 / month", "$1,200 per year".
-    const perUserMonth = lower.matchAll(
-      new RegExp(
-        `${money.rawPrefix}\\s*${money.number}\\s*(?:\\/\\s*|\\s+per\\s+)(?:user|seat|member|license)\\s*(?:\\/\\s*|\\s+per\\s+)(?:month|mo)`,
-        "gi",
-      ),
-    );
-    for (const m of perUserMonth) {
-      results.push({
-        signalType: PricingSignalType.package_monthly,
-        priceValue: parseLocalizedNumber(m[1]!, decimalStyle),
-        currency,
-        region,
-        unit: PricingUnit.package_monthly,
-        minQuantity: minQty,
-        minContractMonths: minTerm,
-        extractedText: firstSentenceAround(normalized, m[0]),
-        confidence: 0.85,
-      });
-    }
+    // Note: per-user/per-seat/per-month phrases are handled canonically by
+    // `extractSaasSeatMonth` above (emits `per_seat_per_month`). The earlier
+    // `perUserMonth` block here emitted a duplicate `package_monthly` signal
+    // and was retired once `per_seat_per_month` became a first-class unit.
 
     const perMonth = lower.matchAll(
       new RegExp(
@@ -302,6 +301,9 @@ export class DeterministicPricingExtractor implements PricingExtractor {
       }
     }
 
+    results.push(...saasSignals);
+    results.push(...tokenSignals);
+    results.push(...meteredSignals);
     return dedupeByType(results);
   }
 }

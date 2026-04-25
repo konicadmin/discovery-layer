@@ -234,10 +234,67 @@ model VendorProfile {
   publicSnapshots   VendorPublicSnapshot[]
   pageMetrics       VendorPageMetric[]
   pricingSignals    PublicPricingSignal[]
+  products          Product[]
 
   @@index([profileStatus])
   @@index([verificationStatus])
   @@map("vendor_profiles")
+}
+
+model Product {
+  id              String   @id
+  vendorProfileId String   @map("vendor_profile_id")
+  vendorProfile   VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
+  slug            String
+  displayName     String   @map("display_name")
+  productKind     ProductKind @default(app) @map("product_kind")
+  canonicalUrl    String?  @map("canonical_url")
+  description     String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt      @map("updated_at")
+
+  plans           Plan[]
+  pricingSignals  PublicPricingSignal[]
+
+  @@unique([vendorProfileId, slug])
+  @@index([slug])
+  @@map("products")
+}
+
+model Plan {
+  id          String   @id
+  productId   String   @map("product_id")
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  slug        String
+  displayName String   @map("display_name")
+  tier        PlanTier @default(unspecified)
+  isFree      Boolean  @default(false) @map("is_free")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  pricingSignals PublicPricingSignal[]
+
+  @@unique([productId, slug])
+  @@map("plans")
+}
+
+enum ProductKind {
+  app
+  api
+  library
+  platform
+  bundle
+}
+
+enum PlanTier {
+  free
+  starter
+  pro
+  team
+  business
+  enterprise
+  unspecified
 }
 
 model VendorServiceCategory {
@@ -1096,11 +1153,34 @@ enum PricingSignalType {
 }
 
 enum PricingUnit {
+  // Security staffing (retained for backward compatibility)
   per_guard_per_month
   per_hour
   per_day
   per_shift
   package_monthly
+
+  // SaaS / seats
+  per_seat_per_month
+  per_seat_per_year
+  per_user_per_month
+
+  // AI / tokens
+  per_1m_input_tokens
+  per_1m_output_tokens
+  per_1k_tokens
+
+  // API / metered
+  per_api_call
+  per_request
+  per_1k_requests
+  usage_metered
+
+  // Flat
+  flat_monthly
+  flat_annual
+  one_time
+
   unspecified
 }
 
@@ -1137,9 +1217,16 @@ model PublicPricingSignal {
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
 
+  productId  String?  @map("product_id")
+  product    Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  planId     String?  @map("plan_id")
+  plan       Plan?    @relation(fields: [planId], references: [id], onDelete: SetNull)
+
   vendorProfile VendorProfile @relation(fields: [vendorProfileId], references: [id], onDelete: Cascade)
 
   @@index([vendorProfileId, status])
   @@index([status, createdAt])
+  @@index([productId])
+  @@index([planId])
   @@map("public_pricing_signals")
 }
