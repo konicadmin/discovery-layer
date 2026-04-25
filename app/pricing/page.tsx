@@ -24,7 +24,6 @@ export default async function PricingIndexPage() {
             publicSnapshots: { where: { publicStatus: "published" }, take: 1 },
           },
         },
-        sourceUrl: true,
       },
       orderBy: { observedAt: "desc" },
       take: 50,
@@ -58,6 +57,17 @@ export default async function PricingIndexPage() {
       orderBy: { label: "asc" },
     }),
   ]);
+
+  const sourceUrlIds = Array.from(
+    new Set(signals.map((s) => s.sourceUrlId).filter((id): id is string => Boolean(id))),
+  );
+  const sourceUrls = sourceUrlIds.length
+    ? await prisma.sourceUrl.findMany({
+        where: { id: { in: sourceUrlIds } },
+        select: { id: true, url: true },
+      })
+    : [];
+  const sourceUrlById = new Map(sourceUrls.map((s) => [s.id, s.url]));
 
   return (
     <main className="min-h-screen bg-white text-gray-950">
@@ -147,10 +157,10 @@ export default async function PricingIndexPage() {
                       {signal.observedAt.toISOString().slice(0, 10)}
                     </td>
                     <td className="px-3 py-2">
-                      {signal.sourceUrl?.url ? (
+                      {signal.sourceUrlId && sourceUrlById.get(signal.sourceUrlId) ? (
                         <a
                           className="underline"
-                          href={signal.sourceUrl.url}
+                          href={sourceUrlById.get(signal.sourceUrlId)}
                           rel="nofollow noreferrer"
                           target="_blank"
                         >

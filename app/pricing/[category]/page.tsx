@@ -40,11 +40,21 @@ export default async function CategoryPage({
       },
       product: true,
       plan: true,
-      sourceUrl: true,
     },
     orderBy: { observedAt: "desc" },
     take: 200,
   });
+
+  const sourceUrlIds = Array.from(
+    new Set(rows.map((r) => r.sourceUrlId).filter((id): id is string => Boolean(id))),
+  );
+  const sourceUrls = sourceUrlIds.length
+    ? await prisma.sourceUrl.findMany({
+        where: { id: { in: sourceUrlIds } },
+        select: { id: true, url: true },
+      })
+    : [];
+  const sourceUrlById = new Map(sourceUrls.map((s) => [s.id, s.url]));
 
   return (
     <main className="min-h-screen bg-white text-gray-950">
@@ -99,10 +109,10 @@ export default async function CategoryPage({
                       {r.observedAt.toISOString().slice(0, 10)}
                     </td>
                     <td className="px-3 py-2">
-                      {r.sourceUrl?.url ? (
+                      {r.sourceUrlId && sourceUrlById.get(r.sourceUrlId) ? (
                         <a
                           className="underline"
-                          href={r.sourceUrl.url}
+                          href={sourceUrlById.get(r.sourceUrlId)}
                           rel="nofollow noreferrer"
                           target="_blank"
                         >
