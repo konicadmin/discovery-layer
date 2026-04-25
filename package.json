@@ -14,6 +14,7 @@
     "crawl:pricing": "tsx scripts/crawl-pricing.ts",
     "pricing:seed-targets": "tsx scripts/seed-pricing-targets.ts",
     "pricing:crawl-popular": "tsx scripts/crawl-popular-pricing.ts",
+    "pricing:remove-security-seed": "tsx scripts/remove-security-seed.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",

@@ -30,9 +30,9 @@ A `Region` enum (`IN` | `US` | `EU`) flows through `Organization`,
   respects decimal styles, and refuses to infer from "contact us"
   pages. INR's `Rs` pattern uses word boundary + digit lookahead so it
   doesn't fire on words like "officers" / "servers".
-- **Seed** — 13 cities (3 IN, 5 US, 5 EU), 11 sample vendors at
-  varying lifecycle stages (5 IN / 3 US / 3 EU), 13 verification
-  checklist items tagged by region, one sample buyer org per region.
+- **Seed** — reference cities, AI/dev/SaaS categories, one ops org,
+  and one sample buyer org per region. Legacy security-staffing sample
+  vendors are gated behind `SEED_INCLUDE_SECURITY=1`.
 
 **Intentionally skipped for V1** (each is a proper project on its own):
 multilingual UI, per-US-state labor nuance, per-EU-country VAT/labor
@@ -50,7 +50,9 @@ Phase 1 (foundation):
 - Internal admin shell at `/admin` (vendors, verification queue,
   requirements, RFQs with compare view, audit log)
 - Vitest integration tests against real Postgres
-- Seed script for Bengaluru + 5 sample vendors at varying lifecycle stages
+- Seed script for reference cities, AI/dev/SaaS categories, ops admin,
+  and buyer test organizations. Legacy security-staffing sample vendors
+  require `SEED_INCLUDE_SECURITY=1`.
 
 Phase 2 (onboarding + verification):
 
