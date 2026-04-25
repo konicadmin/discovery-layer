@@ -4,6 +4,7 @@ const NAV: Array<{ href: string; label: string }> = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/vendors", label: "Vendors" },
   { href: "/admin/verification", label: "Verification queue" },
+  { href: "/admin/discovery", label: "Discovery" },
   { href: "/admin/pricing", label: "Pricing queue" },
   { href: "/admin/requirements", label: "Requirements" },
   { href: "/admin/rfqs", label: "RFQs" },

@@ -50,9 +50,10 @@ model ServiceCategory {
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
 
-  vendorCategories  VendorServiceCategory[]
-  buyerRequirements BuyerRequirement[]
-  checklistItems    VerificationChecklistItem[]
+  vendorCategories     VendorServiceCategory[]
+  buyerRequirements    BuyerRequirement[]
+  checklistItems       VerificationChecklistItem[]
+  discoveryCandidates  DiscoveryCandidate[]
 
   @@map("service_categories")
 }
@@ -138,6 +139,7 @@ model User {
   auditEvents      AuditEvent[]
   claims           VendorClaim[]
   notifications    Notification[]
+  discoveryCandidates DiscoveryCandidate[]
 
   @@map("users")
 }
@@ -902,6 +904,39 @@ enum SourceUrlStatus {
   archived
 }
 
+enum DiscoveryCandidateStatus {
+  new
+  reviewed
+  approved
+  crawled
+  rejected
+}
+
+model DiscoveryCandidate {
+  id                  String                   @id
+  serviceCategoryId   String?                  @map("service_category_id")
+  vendorName          String?                  @map("vendor_name")
+  homepageUrl         String?                  @map("homepage_url")
+  searchTerm          String?                  @map("search_term")
+  notes               String?
+  status              DiscoveryCandidateStatus @default(new)
+  guessedPricingUrl   String?                  @map("guessed_pricing_url")
+  guessConfidence     Decimal?                 @map("guess_confidence") @db.Decimal(4, 3)
+  guessedAt           DateTime?                @map("guessed_at")
+  approvedSourceUrlId String?                  @map("approved_source_url_id")
+  createdByUserId     String?                  @map("created_by_user_id")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+
+  serviceCategory ServiceCategory? @relation(fields: [serviceCategoryId], references: [id], onDelete: SetNull)
+  approvedSource  SourceUrl?       @relation(fields: [approvedSourceUrlId], references: [id], onDelete: SetNull)
+  createdBy       User?            @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([serviceCategoryId, status])
+  @@map("discovery_candidates")
+}
+
 model SourceUrl {
   id              String          @id
   url             String          @unique
@@ -913,7 +948,8 @@ model SourceUrl {
   nextCrawlAt     DateTime?       @map("next_crawl_at")
   createdAt       DateTime        @default(now()) @map("created_at")
 
-  crawls CrawlRun[]
+  crawls              CrawlRun[]
+  discoveryCandidates DiscoveryCandidate[]
 
   @@index([domain])
   @@index([status, nextCrawlAt])
