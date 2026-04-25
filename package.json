@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "crawl:pricing": "tsx scripts/crawl-pricing.ts",
+    "crawl:discovered": "tsx scripts/crawl-discovered.ts",
     "pricing:seed-targets": "tsx scripts/seed-pricing-targets.ts",
     "pricing:crawl-popular": "tsx scripts/crawl-popular-pricing.ts",
     "db:generate": "prisma generate",

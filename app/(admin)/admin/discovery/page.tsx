@@ -1,6 +1,7 @@
 import { DiscoveryCandidateStatus } from "@/generated/prisma";
 import { prisma } from "@/server/db/client";
 import { CandidateRow } from "./candidate-row";
+import { CrawlBatchButton } from "./crawl-batch-button";
 import { NewCandidateForm } from "./new-candidate-form";
 
 export const dynamic = "force-dynamic";
@@ -31,19 +32,23 @@ export default async function DiscoveryQueue() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Discovery candidates</h1>
-        <p className="text-xs text-gray-500 mt-1 max-w-2xl">
-          Source backlog. Add a vendor name, homepage, or category/search term
-          here. Run the pricing-page guesser, then approve a candidate URL —
-          approval registers it in <code>source_urls</code> and queues it for
-          the existing crawl pipeline.
-        </p>
-        <div className="mt-2 text-xs text-gray-500">
-          new {bucket.new ?? 0} · reviewed {bucket.reviewed ?? 0} · approved{" "}
-          {bucket.approved ?? 0} · crawled {bucket.crawled ?? 0} · rejected{" "}
-          {bucket.rejected ?? 0}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Discovery candidates</h1>
+          <p className="text-xs text-gray-500 mt-1 max-w-2xl">
+            Source backlog. Add a vendor name, homepage, or category/search term
+            here. Run the pricing-page guesser, then approve a candidate URL —
+            approval registers it in <code>source_urls</code>. Click <em>Crawl
+            approved</em> to fetch + extract pricing signals into the review
+            queue.
+          </p>
+          <div className="mt-2 text-xs text-gray-500">
+            new {bucket.new ?? 0} · reviewed {bucket.reviewed ?? 0} · approved{" "}
+            {bucket.approved ?? 0} · crawled {bucket.crawled ?? 0} · rejected{" "}
+            {bucket.rejected ?? 0}
+          </div>
         </div>
+        <CrawlBatchButton approvedCount={bucket.approved ?? 0} />
       </div>
 
       <NewCandidateForm categories={categories} />
