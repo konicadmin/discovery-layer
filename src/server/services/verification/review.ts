@@ -401,7 +401,7 @@ export async function reviewDocument(
   db: Db,
   args: {
     documentId: string;
-    status: import("@prisma/client").DocumentStatus;
+    status: import("@/generated/prisma").DocumentStatus;
     notes?: string;
     actorUserId: string;
   },

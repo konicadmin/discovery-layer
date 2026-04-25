@@ -23,7 +23,7 @@ export type CreateQuoteInput = {
   assumptions?: Prisma.InputJsonValue;
   validUntil?: Date;
   lineItems?: Array<{
-    lineType: import("@prisma/client").QuoteLineType;
+    lineType: import("@/generated/prisma").QuoteLineType;
     label: string;
     quantity?: Prisma.Decimal | number | string;
     unit?: string;
